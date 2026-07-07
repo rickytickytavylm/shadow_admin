@@ -17,6 +17,10 @@
 
 * { box-sizing: border-box; }
 
+/* Важно: класс .login-screen задаёт display:grid и перебивал атрибут [hidden].
+   Это правило гарантирует, что скрытые элементы действительно скрыты. */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 
 body {
@@ -119,6 +123,7 @@ select.field option { background: #17171a; color: var(--ink); }
   position: relative;
   z-index: 1;
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;
