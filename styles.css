@@ -376,11 +376,59 @@ select.field option { background: #17171a; color: var(--ink); }
 .msg-user .msg-time { color: rgba(10,10,11,0.5); }
 .msg-bot { align-self: flex-start; background: rgba(255,255,255,0.07); border: 1px solid var(--line-soft); border-bottom-left-radius: 5px; }
 
-@media (max-width: 720px) {
-  .topbar { flex-wrap: wrap; gap: 12px; top: 8px; }
-  .tabs { margin-left: 0; order: 3; width: 100%; justify-content: center; }
-  .topbar-actions { margin-left: auto; }
-  .drawer-body { padding: 20px 18px 50px; }
-  .d-row { grid-template-columns: 110px 1fr; }
-  .field--select { flex: 1 1 100%; min-width: 0; }
+@media (max-width: 760px) {
+  .app { padding: 10px 12px calc(72px + env(safe-area-inset-bottom)); }
+
+  /* Топбар: 1-я строка — бренд + действия, 2-я — вкладки на всю ширину */
+  .topbar {
+    flex-wrap: wrap;
+    gap: 12px;
+    top: 8px;
+    padding: 12px 14px;
+    border-radius: 18px;
+  }
+  .topbar-brand { flex: 1 1 auto; min-width: 0; }
+  .brand-logo--sm { font-size: 15px; }
+  .topbar-actions { flex: 0 0 auto; margin-left: auto; gap: 8px; }
+
+  .tabs {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    gap: 4px;
+    padding: 4px;
+  }
+  .tab { flex: 1 1 0; justify-content: center; padding: 10px 8px; font-size: 13.5px; }
+
+  .btn { min-height: 40px; padding: 0 16px; font-size: 13.5px; }
+
+  .status-line { margin: 14px 2px 2px; }
+
+  /* Инструменты фильтров — в столбик, на всю ширину */
+  .toolbar { flex-direction: column; gap: 10px; margin-bottom: 16px; }
+  .field--search,
+  .field--select { flex: 1 1 auto; width: 100%; min-width: 0; }
+
+  /* Карточки заявок — одна колонка */
+  .apps-grid { grid-template-columns: 1fr; gap: 12px; }
+  .app-card { padding: 16px; }
+
+  /* Drawer на весь экран */
+  .drawer { width: 100vw; border-left: 0; }
+  .drawer-body { padding: 8px 18px calc(56px + env(safe-area-inset-bottom)); }
+  .drawer-close {
+    top: calc(10px + env(safe-area-inset-top));
+    width: 40px; height: 40px; font-size: 24px;
+  }
+  .d-title { font-size: 22px; }
+  .d-row { grid-template-columns: 100px 1fr; gap: 10px; padding: 11px 14px; font-size: 13.5px; }
+  .msg { max-width: 90%; }
+}
+
+@media (max-width: 420px) {
+  .brand-kicker { font-size: 9.5px; letter-spacing: 0.18em; }
+  .brand-logo--sm { font-size: 14px; }
+  .topbar-actions .btn { padding: 0 12px; }
+  .app-card-name { font-size: 16px; }
+  .d-row { grid-template-columns: 88px 1fr; }
 }
