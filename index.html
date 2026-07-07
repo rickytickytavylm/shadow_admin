@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0a0a0b">
+  <title>ТЕНЬ · Админ-панель</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20260707">
+</head>
+<body>
+  <div class="bg-orb bg-orb--1"></div>
+  <div class="bg-orb bg-orb--2"></div>
+
+  <!-- Экран входа -->
+  <section id="login-screen" class="login-screen">
+    <form id="login-form" class="login-card glass" autocomplete="off">
+      <span class="brand-kicker">Танцевальный чемпионат по пилону</span>
+      <div class="brand-logo">ЧЕМПИОНАТ <span class="brand-sep">|</span> ТЕНЬ</div>
+      <h1>Админ-панель</h1>
+      <p class="login-hint">Введите токен доступа, чтобы открыть заявки и чаты.</p>
+      <input id="token-input" class="field" type="password" placeholder="Токен доступа" required>
+      <button type="submit" class="btn btn-primary">Войти</button>
+      <p id="login-error" class="login-error" hidden></p>
+    </form>
+  </section>
+
+  <!-- Приложение -->
+  <div id="app" class="app" hidden>
+    <header class="topbar glass">
+      <div class="topbar-brand">
+        <span class="brand-kicker">Чемпионат</span>
+        <div class="brand-logo brand-logo--sm">ЧЕМПИОНАТ <span class="brand-sep">|</span> ТЕНЬ</div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="apps" type="button" role="tab">
+          Заявки <span class="tab-count" id="tab-apps-count">0</span>
+        </button>
+        <button class="tab" data-tab="chats" type="button" role="tab">
+          Чаты с ИИ <span class="tab-count" id="tab-chats-count">0</span>
+        </button>
+      </nav>
+      <div class="topbar-actions">
+        <button id="refresh-btn" class="btn btn-ghost" type="button" title="Обновить">Обновить</button>
+        <button id="logout-btn" class="btn btn-ghost" type="button">Выйти</button>
+      </div>
+    </header>
+
+    <p id="status-line" class="status-line"></p>
+
+    <!-- ЗАЯВКИ -->
+    <section id="view-apps" class="view">
+      <div class="toolbar">
+        <input id="apps-search" class="field field--search" type="search" placeholder="Поиск: имя, email, телефон, город…">
+        <select id="category-filter" class="field field--select" aria-label="Категория">
+          <option value="">Все категории</option>
+        </select>
+        <select id="status-filter" class="field field--select" aria-label="Статус">
+          <option value="">Все статусы</option>
+          <option value="new">Новая</option>
+          <option value="reviewing">На рассмотрении</option>
+          <option value="accepted">Прошёл отбор</option>
+          <option value="rejected">Отклонена</option>
+          <option value="paid">Оплачено</option>
+        </select>
+      </div>
+      <div id="apps-grid" class="apps-grid"></div>
+      <p id="apps-empty" class="empty-state" hidden>Заявок пока нет.</p>
+    </section>
+
+    <!-- ЧАТЫ -->
+    <section id="view-chats" class="view" hidden>
+      <div class="toolbar">
+        <input id="chats-search" class="field field--search" type="search" placeholder="Поиск по тексту диалога или device id…">
+      </div>
+      <div id="chats-list" class="chats-list"></div>
+      <p id="chats-empty" class="empty-state" hidden>Диалогов с ИИ пока нет.</p>
+    </section>
+  </div>
+
+  <!-- Выдвижная панель деталей -->
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="drawer" class="drawer glass" hidden aria-hidden="true">
+    <button id="drawer-close" class="drawer-close" type="button" aria-label="Закрыть">&times;</button>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
