@@ -248,6 +248,7 @@
     el.drawerBackdrop.hidden = false;
     el.drawer.setAttribute("aria-hidden", "false");
     el.drawer.scrollTop = 0;
+    document.body.style.overflow = "hidden";
     requestAnimationFrame(() => {
       el.drawer.classList.add("is-open");
       el.drawerBackdrop.classList.add("is-open");
@@ -257,6 +258,7 @@
     el.drawer.classList.remove("is-open");
     el.drawerBackdrop.classList.remove("is-open");
     el.drawer.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
     setTimeout(() => { el.drawer.hidden = true; el.drawerBackdrop.hidden = true; el.drawerBody.innerHTML = ""; }, 340);
   }
 
@@ -314,15 +316,8 @@
         ${a.comment ? row("Комментарий", esc(a.comment)) : ""}
       </dl>
 
-      <div class="d-section-title">Техническая информация</div>
-      <dl class="d-grid">
-        ${row("Device ID", `<span class="mono">${esc(a.deviceId || "—")}</span>`)}
-        ${row("IP", `<span class="mono">${esc(a.ip || "—")}</span>`)}
-        ${row("Устройство", `<span class="mono">${esc(a.userAgent || "—")}</span>`)}
-        ${row("ID заявки", `<span class="mono">${esc(a.id)}</span>`)}
-      </dl>
-
-      <div class="d-section-title">Статус</div>
+      <div class="d-section-title">Статус заявки</div>
+      <p class="d-hint">Пометка для вас — на каком этапе заявка. Участник её не видит.</p>
       <div class="d-status-row">${statusBtns}</div>
 
       <div class="d-section-title">Переписка</div>
@@ -330,6 +325,16 @@
 
       <div class="d-section-title">Ответить участнику на почту</div>
       ${replyBox}
+
+      <details class="d-details">
+        <summary>Технические данные</summary>
+        <dl class="d-grid" style="margin-top: 12px">
+          ${row("Device ID", `<span class="mono">${esc(a.deviceId || "—")}</span>`)}
+          ${row("IP", `<span class="mono">${esc(a.ip || "—")}</span>`)}
+          ${row("Устройство", `<span class="mono">${esc(a.userAgent || "—")}</span>`)}
+          ${row("ID заявки", `<span class="mono">${esc(a.id)}</span>`)}
+        </dl>
+      </details>
     `);
 
     // Статусы

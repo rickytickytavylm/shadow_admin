@@ -386,6 +386,27 @@ select.field option { background: #17171a; color: var(--ink); }
 .d-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--faint); }
 .d-title { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 4px; }
 .d-section-title { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin: 26px 0 12px; }
+.d-hint { margin: -4px 0 12px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+/* Сворачиваемый блок технических данных */
+.d-details { margin-top: 28px; border-top: 1px solid var(--line-soft); padding-top: 16px; }
+.d-details summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+.d-details summary::-webkit-details-marker { display: none; }
+.d-details summary::before { content: "+"; font-size: 15px; line-height: 1; color: var(--faint); }
+.d-details[open] summary::before { content: "–"; }
+.d-details summary:hover { color: var(--muted); }
 
 .d-grid { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden; }
 .d-row { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 12px 16px; background: rgba(255,255,255,0.02); font-size: 14px; }
