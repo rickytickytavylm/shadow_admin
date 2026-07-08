@@ -139,6 +139,13 @@
       renderApps();
       renderChats();
       el.statusLine.textContent = `Обновлено: ${new Date().toLocaleTimeString("ru-RU")}${state.emailEnabled ? "" : " · почта (SMTP) не настроена — ответы отключены"}`;
+
+      // В фоне проверяем новые ответы участников по почте; если пришли — обновим.
+      if (apps.inboxEnabled) {
+        api("/api/applications/inbox/fetch", { method: "POST" })
+          .then((r) => { if (r && r.added > 0) { toast(`Новых ответов участников: ${r.added}`, "ok"); loadAll(); } })
+          .catch(() => {});
+      }
     } catch (err) {
       if (err.message === "unauthorized") return;
       el.statusLine.textContent = `Ошибка загрузки: ${err.message}. Проверьте API_BASE в config.js и что сервер запущен.`;
@@ -176,7 +183,8 @@
       card.type = "button";
       card.className = "app-card";
       card.addEventListener("click", () => openAppDrawer(a.id));
-      const replies = Array.isArray(a.replies) ? a.replies.length : 0;
+      const msgs = Array.isArray(a.messages) ? a.messages : [];
+      const incoming = msgs.filter((m) => m.direction === "in").length;
       card.innerHTML = `
         <div class="app-card-top">
           <div>
@@ -189,7 +197,7 @@
         <div class="app-card-row">${esc(a.phone || "—")}${a.city ? " · " + esc(a.city) : ""}</div>
         <div class="app-card-foot">
           ${statusChip(a.status)}
-          ${replies ? `<span class="chip">✉ ответов: ${replies}</span>` : ""}
+          ${incoming ? `<span class="chip chip-reply">✉ ответ участника: ${incoming}</span>` : (msgs.length ? `<span class="chip">✉ ${msgs.length}</span>` : "")}
         </div>`;
       frag.appendChild(card);
     }
@@ -264,15 +272,16 @@
     if (a.email) contact.push(`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`);
     const video = a.videoUrl ? `<a href="${esc(a.videoUrl)}" target="_blank" rel="noopener">Открыть видео ↗</a>` : "—";
 
-    const replies = Array.isArray(a.replies) ? a.replies : [];
-    const repliesHtml = replies.length
-      ? `<div class="reply-history">${replies.map((r) => `
-          <div class="reply-item">
-            <div class="reply-item-head">${esc(fmtDate(r.sentAt))}</div>
-            ${r.subject ? `<div class="reply-item-subj">${esc(r.subject)}</div>` : ""}
-            <div class="reply-item-msg">${esc(r.message)}</div>
-          </div>`).join("")}</div>`
-      : `<p class="reply-hint">Ответов пока не отправляли.</p>`;
+    const msgs = Array.isArray(a.messages) ? a.messages : [];
+    const convoHtml = msgs.length
+      ? `<div class="transcript">${msgs.map((m) => {
+          const incoming = m.direction === "in";
+          return `<div class="msg msg-${incoming ? "bot" : "user"}">
+            ${m.subject ? `<div class="msg-subj">${esc(m.subject)}</div>` : ""}${esc(m.text)}
+            <span class="msg-time">${incoming ? "участник" : "мы"} · ${esc(fmtDate(m.at))}</span>
+          </div>`;
+        }).join("")}</div>`
+      : `<p class="reply-hint">Переписки пока нет.</p>`;
 
     const statusBtns = STATUS_ORDER.map((s) =>
       `<button type="button" class="d-status-btn ${(a.status || "new") === s ? "is-active" : ""}" data-status="${s}">${esc(statusLabel(s))}</button>`
@@ -316,11 +325,11 @@
       <div class="d-section-title">Статус</div>
       <div class="d-status-row">${statusBtns}</div>
 
+      <div class="d-section-title">Переписка</div>
+      ${convoHtml}
+
       <div class="d-section-title">Ответить участнику на почту</div>
       ${replyBox}
-
-      <div class="d-section-title">История ответов</div>
-      ${repliesHtml}
     `);
 
     // Статусы

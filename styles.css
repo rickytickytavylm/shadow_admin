@@ -256,6 +256,7 @@ select.field option { background: #17171a; color: var(--ink); }
   white-space: nowrap;
 }
 .chip-cat { color: var(--accent); border-color: rgba(231, 201, 138, 0.3); background: rgba(231, 201, 138, 0.08); }
+.chip-reply { color: var(--ok); border-color: rgba(74, 222, 128, 0.35); background: rgba(74, 222, 128, 0.1); }
 
 /* Статусы */
 .status-dot { width: 7px; height: 7px; border-radius: 50%; }
@@ -425,6 +426,7 @@ select.field option { background: #17171a; color: var(--ink); }
 /* Транскрипт чата */
 .transcript { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
 .msg { max-width: 85%; padding: 11px 15px; border-radius: 16px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.msg-subj { font-weight: 600; font-size: 12.5px; opacity: 0.85; margin-bottom: 4px; }
 .msg-time { display: block; font-size: 10.5px; color: var(--faint); margin-top: 5px; }
 .msg-user { align-self: flex-end; background: var(--ink); color: #0a0a0b; border-bottom-right-radius: 5px; }
 .msg-user .msg-time { color: rgba(10,10,11,0.5); }
