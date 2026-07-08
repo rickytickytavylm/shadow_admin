@@ -51,6 +51,7 @@
     drawerBackdrop: document.getElementById("drawer-backdrop"),
     drawerBody: document.getElementById("drawer-body"),
     drawerClose: document.getElementById("drawer-close"),
+    toast: document.getElementById("toast"),
   };
 
   const state = {
@@ -69,6 +70,21 @@
     const d = document.createElement("div");
     d.textContent = String(text);
     return d.innerHTML;
+  }
+
+  // Всплывающее уведомление (тост). Живёт отдельно от панели, поэтому
+  // перерисовка деталей его не стирает.
+  let toastTimer = null;
+  function toast(message, type = "ok") {
+    el.toast.textContent = message;
+    el.toast.className = `toast toast--${type}`;
+    el.toast.hidden = false;
+    requestAnimationFrame(() => el.toast.classList.add("is-open"));
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.toast.classList.remove("is-open");
+      setTimeout(() => { el.toast.hidden = true; }, 300);
+    }, 3600);
   }
 
   function fmtDate(iso) {
@@ -223,6 +239,7 @@
     el.drawer.hidden = false;
     el.drawerBackdrop.hidden = false;
     el.drawer.setAttribute("aria-hidden", "false");
+    el.drawer.scrollTop = 0;
     requestAnimationFrame(() => {
       el.drawer.classList.add("is-open");
       el.drawerBackdrop.classList.add("is-open");
@@ -317,8 +334,9 @@
           Object.assign(a, res.item);
           el.drawerBody.querySelectorAll(".d-status-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.status === status));
           renderApps();
+          toast(`Статус изменён: ${statusLabel(status)}`, "ok");
         } catch (err) {
-          el.statusLine.textContent = `Не удалось сменить статус: ${err.message}`;
+          toast(`Не удалось изменить статус: ${err.message}`, "err");
         }
       });
     });
@@ -330,7 +348,13 @@
         const subject = document.getElementById("reply-subject").value.trim();
         const message = document.getElementById("reply-message").value.trim();
         const statusEl = document.getElementById("reply-status");
-        if (message.length < 2) { statusEl.className = "reply-status err"; statusEl.textContent = "Введите текст письма."; return; }
+        if (message.length < 2) {
+          statusEl.className = "reply-status err";
+          statusEl.textContent = "Напишите текст письма.";
+          return;
+        }
+        if (!window.confirm(`Отправить письмо участнику на ${a.email}?`)) return;
+
         sendBtn.disabled = true; sendBtn.textContent = "Отправляем…";
         statusEl.className = "reply-status"; statusEl.textContent = "";
         try {
@@ -338,17 +362,14 @@
             method: "POST", body: JSON.stringify({ subject, message }),
           });
           Object.assign(a, res.item);
-          statusEl.className = "reply-status ok";
-          statusEl.textContent = "Письмо отправлено ✓";
-          document.getElementById("reply-subject").value = "";
-          document.getElementById("reply-message").value = "";
-          openAppDrawer(a.id); // перерисуем с обновлённой историей
+          toast(`Письмо отправлено на ${a.email}`, "ok");
+          openAppDrawer(a.id); // перерисуем с обновлённой историей (тост не пропадёт)
           renderApps();
         } catch (err) {
-          statusEl.className = "reply-status err";
-          statusEl.textContent = `Ошибка: ${err.message}`;
-        } finally {
           sendBtn.disabled = false; sendBtn.textContent = "Отправить письмо";
+          statusEl.className = "reply-status err";
+          statusEl.textContent = `Не удалось отправить: ${err.message}`;
+          toast("Не удалось отправить письмо", "err");
         }
       });
     }

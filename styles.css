@@ -334,6 +334,54 @@ select.field option { background: #17171a; color: var(--ink); }
 .drawer-close:hover { background: rgba(255,255,255,0.14); }
 .drawer-body { padding: 22px 28px 60px; }
 
+/* «Ручка» шторки — видна только в мобильном режиме bottom-sheet */
+.drawer-grabber { display: none; }
+
+/* ── Тост (всплывающее уведомление) ── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(20px);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 14px 20px;
+  border-radius: 16px;
+  background: rgba(28, 28, 32, 0.92);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.toast.is-open { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 14px;
+}
+.toast.toast--ok::before {
+  background-color: var(--ok);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230a0a0b' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E");
+}
+.toast.toast--err::before {
+  background-color: var(--danger);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230a0a0b' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
+}
+
 .d-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--faint); }
 .d-title { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 4px; }
 .d-section-title { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin: 26px 0 12px; }
@@ -361,6 +409,7 @@ select.field option { background: #17171a; color: var(--ink); }
 
 /* Ответ на email */
 .reply-box { display: flex; flex-direction: column; gap: 10px; }
+.reply-box .btn { width: 100%; min-height: 48px; margin-top: 2px; }
 .reply-hint { font-size: 13px; color: var(--muted); margin: 0; }
 .reply-warn { font-size: 13px; color: var(--danger); margin: 0; }
 .reply-status { font-size: 13px; margin: 0; min-height: 16px; }
@@ -418,13 +467,41 @@ select.field option { background: #17171a; color: var(--ink); }
   .apps-grid { grid-template-columns: 1fr; gap: 12px; }
   .app-card { padding: 16px; }
 
-  /* Drawer на весь экран */
-  .drawer { width: 100vw; border-left: 0; }
-  .drawer-body { padding: 8px 18px calc(56px + env(safe-area-inset-bottom)); }
-  .drawer-close {
-    top: calc(10px + env(safe-area-inset-top));
-    width: 40px; height: 40px; font-size: 24px;
+  /* Drawer как нативная iOS-шторка снизу */
+  .drawer {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 92dvh;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 24px 24px 0 0;
+    transform: translateY(100%);
   }
+  .drawer.is-open { transform: translateY(0); }
+  .drawer-grabber {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    width: 40px;
+    height: 5px;
+    margin: 10px auto 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.25);
+  }
+  .drawer-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    margin: 0;
+    float: none;
+    width: 36px; height: 36px; font-size: 22px;
+  }
+  .drawer-body { padding: 6px 18px calc(40px + env(safe-area-inset-bottom)); }
   .d-title { font-size: 22px; }
   .d-row { grid-template-columns: 100px 1fr; gap: 10px; padding: 11px 14px; font-size: 13.5px; }
   .msg { max-width: 90%; }

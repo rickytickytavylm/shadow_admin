@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260707d">
+  <link rel="stylesheet" href="styles.css?v=20260708a">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -85,9 +85,13 @@
   <!-- Выдвижная панель деталей -->
   <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
   <aside id="drawer" class="drawer glass" hidden aria-hidden="true">
+    <div class="drawer-grabber" aria-hidden="true"></div>
     <button id="drawer-close" class="drawer-close" type="button" aria-label="Закрыть">&times;</button>
     <div id="drawer-body" class="drawer-body"></div>
   </aside>
+
+  <!-- Всплывающее уведомление -->
+  <div id="toast" class="toast" hidden aria-live="polite"></div>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
