@@ -341,6 +341,12 @@
           ${a.shadowIdea ? row("Идея номера", esc(a.shadowIdea)) : ""}
         </dl>
       ` : ""}
+      ${cats.includes("battle") && a.battleLevel ? `
+        <div class="d-section-title">Детали категории Батл</div>
+        <dl class="d-grid">
+          ${row("Уровень", esc({ amateur: "Любители", professional: "Профи" }[a.battleLevel] || a.battleLevel))}
+        </dl>
+      ` : ""}
 
       <div class="d-section-title">Видео и комментарий</div>
       <dl class="d-grid">
