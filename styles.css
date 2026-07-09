@@ -127,6 +127,24 @@ select.field option { background: #17171a; color: var(--ink); }
   display: grid;
   place-items: center;
   padding: 24px;
+  isolation: isolate;
+}
+.login-screen::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background: url("background_opening.jpg") center / cover no-repeat;
+}
+.login-screen::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(1100px 700px at 50% 45%, rgba(10, 10, 11, 0.35), transparent 70%),
+    linear-gradient(180deg, rgba(10, 10, 11, 0.55) 0%, rgba(10, 10, 11, 0.35) 40%, rgba(10, 10, 11, 0.72) 100%);
+  backdrop-filter: saturate(115%);
 }
 .login-card {
   width: 100%;
@@ -136,6 +154,10 @@ select.field option { background: #17171a; color: var(--ink); }
   gap: 14px;
   padding: 42px 34px;
   border-radius: 26px;
+  background: rgba(14, 14, 16, 0.55);
+  backdrop-filter: saturate(160%) blur(28px);
+  -webkit-backdrop-filter: saturate(160%) blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: var(--shadow);
 }
 .login-card h1 { margin: 10px 0 0; font-size: 28px; letter-spacing: -0.03em; }
