@@ -161,7 +161,7 @@
       if (cat && a.category !== cat) return false;
       if (st && (a.status || "new") !== st) return false;
       if (q) {
-        const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.city}`.toLowerCase();
+        const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -321,6 +321,7 @@
         ${row("Email", contact.length ? contact.join("") : "—")}
         ${row("Телефон", esc(a.phone || "—"))}
         ${row("Telegram", esc(a.telegram || "—"))}
+        ${row("Instagram", esc(a.instagram || "—"))}
         ${row("Город", esc(a.city || "—"))}
       </dl>
 
