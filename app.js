@@ -330,7 +330,13 @@
 
       <div class="d-section-title">Категории</div>
       <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px">${catsHtml || "—"}</div>
-      ${a.shadowIdea ? `<div class="d-section-title">Идея номера (Тень)</div><p style="margin:0 0 16px;font-size:14px;line-height:1.6">${esc(a.shadowIdea)}</p>` : ""}
+      ${cats.includes("shadow") ? `
+        <div class="d-section-title">Детали категории Тень</div>
+        <dl class="d-grid">
+          ${a.shadowType ? row("Состав", esc({ solo: "Соло", duet: "Дуэт", group: "Команда" }[a.shadowType] || a.shadowType)) : ""}
+          ${a.shadowIdea ? row("Идея номера", esc(a.shadowIdea)) : ""}
+        </dl>
+      ` : ""}
 
       <div class="d-section-title">Видео и комментарий</div>
       <dl class="d-grid">
