@@ -241,7 +241,8 @@ select.field option { background: #17171a; color: var(--ink); }
 .app-card-date { font-size: 12px; color: var(--faint); margin-top: 2px; }
 .app-card-row { font-size: 13.5px; color: var(--muted); display: flex; gap: 8px; }
 .app-card-row b { color: var(--ink); font-weight: 500; }
-.app-card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.app-card-cats { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; }
+.app-card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 
 .chip {
   display: inline-flex;

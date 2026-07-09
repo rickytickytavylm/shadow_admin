@@ -185,19 +185,21 @@
       card.addEventListener("click", () => openAppDrawer(a.id));
       const msgs = Array.isArray(a.messages) ? a.messages : [];
       const incoming = msgs.filter((m) => m.direction === "in").length;
+      const cardCats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
+      const cardCatsHtml = cardCats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join("");
       card.innerHTML = `
         <div class="app-card-top">
           <div>
             <div class="app-card-name">${esc(a.fullName || "Без имени")}</div>
             <div class="app-card-date">${esc(fmtDate(a.createdAt))}</div>
           </div>
-          <span class="chip chip-cat">${esc(catLabel(a.category))}</span>
         </div>
+        <div class="app-card-cats">${cardCatsHtml || "—"}</div>
         <div class="app-card-row"><b>${esc(a.email || "—")}</b></div>
         <div class="app-card-row">${esc(a.phone || "—")}${a.city ? " · " + esc(a.city) : ""}</div>
         <div class="app-card-foot">
           ${statusChip(a.status)}
-          ${incoming ? `<span class="chip chip-reply">✉ ответ участника: ${incoming}</span>` : (msgs.length ? `<span class="chip">✉ ${msgs.length}</span>` : "")}
+          ${incoming ? `<span class="chip chip-reply">✉ ${incoming}</span>` : (msgs.length ? `<span class="chip">✉ ${msgs.length}</span>` : "")}
         </div>`;
       frag.appendChild(card);
     }
@@ -299,19 +301,39 @@
         </div>`
       : `<p class="reply-warn">Почта (SMTP) не настроена на сервере — отправка писем недоступна. Задайте переменные SMTP_* в настройках бэкенда.</p>`;
 
+    // Категории — массив или fallback на одну
+    const cats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
+    const catsHtml = cats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join(" ");
+
+    const roleLabels = { student: "Ученик", teacher: "Педагог" };
+
     openDrawer(`
-      <span class="d-kicker">Заявка · ${esc(catLabel(a.category))}</span>
+      <span class="d-kicker">Заявка</span>
       <h2 class="d-title">${esc(a.fullName || "Без имени")}</h2>
       ${statusChip(a.status)}
 
-      <div class="d-section-title">Данные участника</div>
+      <div class="d-section-title">Контакты</div>
       <dl class="d-grid">
         ${row("Дата", esc(fmtDate(a.createdAt)))}
-        ${row("Категория", esc(catLabel(a.category)))}
         ${row("Email", contact.length ? contact.join("") : "—")}
         ${row("Телефон", esc(a.phone || "—"))}
         ${row("Telegram", esc(a.telegram || "—"))}
         ${row("Город", esc(a.city || "—"))}
+      </dl>
+
+      <div class="d-section-title">Участник</div>
+      <dl class="d-grid">
+        ${row("Роль", esc(roleLabels[a.role] || a.role || "—"))}
+        ${row("Стаж", esc(a.experience || "—"))}
+        ${a.awards ? row("Призовые места", esc(a.awards)) : ""}
+      </dl>
+
+      <div class="d-section-title">Категории</div>
+      <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px">${catsHtml || "—"}</div>
+      ${a.shadowIdea ? `<div class="d-section-title">Идея номера (Тень)</div><p style="margin:0 0 16px;font-size:14px;line-height:1.6">${esc(a.shadowIdea)}</p>` : ""}
+
+      <div class="d-section-title">Видео и комментарий</div>
+      <dl class="d-grid">
         ${row("Видео", video)}
         ${a.comment ? row("Комментарий", esc(a.comment)) : ""}
       </dl>
