@@ -274,7 +274,10 @@
 
     const contact = [];
     if (a.email) contact.push(`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`);
-    const video = a.videoUrl ? `<a href="${esc(a.videoUrl)}" target="_blank" rel="noopener">Открыть видео ↗</a>` : "—";
+    const videoLinks = String(a.videoUrl || "").split(/\n/).map((l) => l.trim()).filter(Boolean);
+    const video = videoLinks.length
+      ? videoLinks.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">Видео${videoLinks.length > 1 ? " " + (i + 1) : ""} ↗</a>`).join("<br>")
+      : "—";
 
     const msgs = Array.isArray(a.messages) ? a.messages : [];
     const convoHtml = msgs.length
