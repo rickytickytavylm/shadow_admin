@@ -263,13 +263,40 @@
   }
 
   // ── Drawer ──
+  // Надёжная блокировка прокрутки фона (в т.ч. iOS): фиксируем body по месту,
+  // чтобы за открытой карточкой ничего не «ездило».
+  let scrollLockY = 0;
+  let scrollLocked = false;
+  function lockScroll() {
+    if (scrollLocked) return;
+    scrollLockY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollLockY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+    scrollLocked = true;
+  }
+  function unlockScroll() {
+    if (!scrollLocked) return;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    document.body.style.overflow = "";
+    scrollLocked = false;
+    window.scrollTo(0, scrollLockY);
+  }
+
   function openDrawer(html) {
     el.drawerBody.innerHTML = html;
     el.drawer.hidden = false;
     el.drawerBackdrop.hidden = false;
     el.drawer.setAttribute("aria-hidden", "false");
     el.drawer.scrollTop = 0;
-    document.body.style.overflow = "hidden";
+    lockScroll();
     requestAnimationFrame(() => {
       el.drawer.classList.add("is-open");
       el.drawerBackdrop.classList.add("is-open");
@@ -279,7 +306,7 @@
     el.drawer.classList.remove("is-open");
     el.drawerBackdrop.classList.remove("is-open");
     el.drawer.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
+    unlockScroll();
     setTimeout(() => { el.drawer.hidden = true; el.drawerBackdrop.hidden = true; el.drawerBody.innerHTML = ""; }, 340);
   }
 
@@ -492,15 +519,22 @@
   }
 
   // ── Экраны ──
+  // Цвет системной строки (в PWA): тёмный на входе (под фон-картинку, без белой
+  // полоски), светлый — в приложении.
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  function setThemeColor(color) { if (themeMeta) themeMeta.setAttribute("content", color); }
+
   function showLogin(errorMsg) {
     el.app.hidden = true;
     el.loginScreen.hidden = false;
+    setThemeColor("#0c0c0e");
     if (errorMsg) { el.loginError.textContent = errorMsg; el.loginError.hidden = false; }
     else el.loginError.hidden = true;
   }
   function showApp() {
     el.loginScreen.hidden = true;
     el.app.hidden = false;
+    setThemeColor("#f5f5f7");
     loadAll();
   }
 
@@ -514,11 +548,28 @@
     showApp();
   });
   const doLogout = () => { clearToken(); closeDrawer(); showLogin(); };
-  el.refreshBtn.addEventListener("click", loadAll);
+
+  let refreshing = false;
+  async function manualRefresh(btn) {
+    if (refreshing) return;
+    refreshing = true;
+    [el.refreshBtn, el.tabbarRefresh].forEach((b) => b && b.classList.add("is-spinning"));
+    if (el.refreshBtn) { el.refreshBtn.disabled = true; }
+    try {
+      await loadAll();
+      toast("Обновлено", "ok");
+    } finally {
+      refreshing = false;
+      [el.refreshBtn, el.tabbarRefresh].forEach((b) => b && b.classList.remove("is-spinning"));
+      if (el.refreshBtn) { el.refreshBtn.disabled = false; }
+    }
+  }
+
+  el.refreshBtn.addEventListener("click", () => manualRefresh(el.refreshBtn));
   el.logoutBtn.addEventListener("click", doLogout);
   el.tabs.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
   el.tabbarBtns.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
-  if (el.tabbarRefresh) el.tabbarRefresh.addEventListener("click", loadAll);
+  if (el.tabbarRefresh) el.tabbarRefresh.addEventListener("click", () => manualRefresh(el.tabbarRefresh));
   if (el.tabbarLogout) el.tabbarLogout.addEventListener("click", doLogout);
   el.appsSearch.addEventListener("input", renderApps);
   el.categoryFilter.addEventListener("change", renderApps);

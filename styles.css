@@ -23,8 +23,9 @@
 
 [hidden] { display: none !important; }
 
-html, body { height: 100%; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { height: 100%; max-width: 100%; }
+/* clip (а не hidden) — не создаёт scroll-контейнер и не ломает position: sticky у шапки */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: clip; }
 
 body {
   margin: 0;
@@ -36,7 +37,12 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: -0.01em;
-  overflow-x: hidden;
+  overflow-x: clip;
+  touch-action: manipulation; /* убирает double-tap-to-zoom */
+}
+
+button, a, label, .tab, .tabbar-btn, .app-card, .chat-card, .field, .btn {
+  touch-action: manipulation;
 }
 
 /* Декоративные пятна в светлой теме не нужны */
@@ -82,7 +88,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px; /* ≥16px, чтобы iOS не зумил страницу при фокусе */
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-sm);
@@ -360,17 +366,23 @@ select.field option { background: #fff; color: var(--ink); }
   background: var(--surface);
 }
 .drawer.is-open { transform: translateX(0); }
+.drawer { overscroll-behavior: contain; }
 .drawer-close {
   position: sticky;
   top: 14px;
   float: right;
   margin: 14px 14px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 38px; height: 38px;
+  padding: 0;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--surface-2);
-  color: var(--ink);
-  font-size: 22px;
+  color: var(--muted);
+  font-size: 24px;
+  font-weight: 400;
   line-height: 1;
   cursor: pointer;
   z-index: 2;
@@ -457,7 +469,7 @@ select.field option { background: #fff; color: var(--ink); }
 .d-row dd { margin: 0; color: var(--ink); word-break: break-word; }
 .d-row dd a { color: var(--accent); text-decoration: none; }
 .d-row dd a:hover { text-decoration: underline; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; word-break: break-word; }
 
 /* Смена статуса */
 .d-status-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -557,7 +569,7 @@ select.field option { background: #fff; color: var(--ink); }
     right: 14px;
     margin: 0;
     float: none;
-    width: 36px; height: 36px; font-size: 22px;
+    width: 34px; height: 34px; font-size: 22px;
   }
   .drawer-body { padding: 6px 18px calc(40px + env(safe-area-inset-bottom)); }
   .d-title { font-size: 22px; }
@@ -594,9 +606,11 @@ select.field option { background: #fff; color: var(--ink); }
   -webkit-tap-highlight-color: transparent;
   transition: color 0.15s ease;
 }
-.tabbar-btn svg { display: block; }
+.tabbar-btn svg { display: block; transition: transform 0.15s ease; }
 .tabbar-btn.is-active { color: var(--accent); }
 .tabbar-btn:active { transform: scale(0.96); }
+@keyframes teni-spin { to { transform: rotate(360deg); } }
+.is-spinning svg { animation: teni-spin 0.7s linear infinite; }
 
 @media (max-width: 760px) {
   /* Табы и действия переезжают в нижний бар — шапка остаётся только с брендом */
