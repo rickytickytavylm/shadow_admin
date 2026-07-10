@@ -153,6 +153,12 @@
     }
   }
 
+  // Оплачено ли — независимо от рабочего статуса. Старые заявки (до новой
+  // модели) имеют статус «Новая», но с суммой в paidAmount — тоже оплачены.
+  function isPaid(a) {
+    return a.status === "paid" || Number(a.paidAmount) > 0;
+  }
+
   // ── Рендер заявок ──
   function filteredApps() {
     const q = el.appsSearch.value.trim().toLowerCase();
@@ -160,7 +166,13 @@
     const st = el.statusFilter.value;
     return state.apps.filter((a) => {
       if (cat && a.category !== cat) return false;
-      if (st && (a.status || "new") !== st) return false;
+      if (st === "paid") {
+        if (!isPaid(a)) return false;
+      } else if (st === "awaiting_payment") {
+        if (!(a.status === "awaiting_payment" && !isPaid(a))) return false;
+      } else if (st && (a.status || "new") !== st) {
+        return false;
+      }
       if (q) {
         const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -199,7 +211,10 @@
         <div class="app-card-row"><b>${esc(a.email || "—")}</b></div>
         <div class="app-card-row">${esc(a.phone || "—")}${a.city ? " · " + esc(a.city) : ""}</div>
         <div class="app-card-foot">
-          ${statusChip(a.status)}
+          ${isPaid(a)
+            ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено${a.paidAmount ? " · " + esc(a.paidAmount) + " ₽" : ""}</span>`
+            : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`}
+          ${a.status && a.status !== "new" && a.status !== "awaiting_payment" && a.status !== "paid" ? statusChip(a.status) : ""}
           ${incoming ? `<span class="chip chip-reply">✉ ${incoming}</span>` : (msgs.length ? `<span class="chip">✉ ${msgs.length}</span>` : "")}
         </div>`;
       frag.appendChild(card);
@@ -335,7 +350,7 @@
 
       <div class="d-section-title">Оплата</div>
       <dl class="d-grid">
-        ${row("Статус", a.status === "paid"
+        ${row("Статус", isPaid(a)
           ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено</span>`
           : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`)}
         ${row("Сумма", a.paidAmount ? esc(a.paidAmount) + " ₽" : "—")}
