@@ -1,7 +1,7 @@
 /* Service worker для PWA «TENI · Админ».
    Приоритет — свежесть данных: код и страницы всегда тянем из сети,
    кэш используем только как офлайн-фолбэк. API (другой домен) не трогаем. */
-const CACHE = "teni-admin-v4";
+const CACHE = "teni-admin-v5";
 const CORE = [
   "./",
   "./index.html",
@@ -78,7 +78,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Прочее (иконки и т.п.) — stale-while-revalidate.
+  // API/сторонние домены и прочее — stale-while-revalidate.
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
@@ -92,6 +92,36 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => null);
       return cached || (await network) || Response.error();
+    })()
+  );
+});
+
+// ── Push-уведомления ──
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
+  const title = data.title || "Новое сообщение";
+  const options = {
+    body: data.body || "",
+    icon: "icons/icon-192.png",
+    badge: "icons/icon-192.png",
+    tag: data.tag || undefined,
+    renotify: Boolean(data.tag),
+    data: { url: data.url || "./index.html" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || "./index.html";
+  event.waitUntil(
+    (async () => {
+      const all = await clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const c of all) {
+        if ("focus" in c) return c.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(target);
     })()
   );
 });

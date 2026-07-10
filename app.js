@@ -35,6 +35,8 @@
     statusLine: document.getElementById("status-line"),
     refreshBtn: document.getElementById("refresh-btn"),
     logoutBtn: document.getElementById("logout-btn"),
+    settingsBtn: document.getElementById("settings-btn"),
+    tabbarSettings: document.getElementById("tabbar-settings"),
     tabs: Array.from(document.querySelectorAll(".tab")),
     tabbarBtns: Array.from(document.querySelectorAll(".tabbar-btn[data-tab]")),
     tabbarRefresh: document.getElementById("tabbar-refresh"),
@@ -509,6 +511,158 @@
     `);
   }
 
+  // ── Настройки: фон ──
+  const BACKGROUNDS = [
+    { id: "light", name: "Светлый", prev: "#f5f5f7" },
+    { id: "warm", name: "Тёплый", prev: "linear-gradient(135deg,#f8f4ef,#efe6da)" },
+    { id: "cool", name: "Холодный", prev: "linear-gradient(135deg,#eef2f8,#e2eaf5)" },
+    { id: "rose", name: "Розовый", prev: "linear-gradient(135deg,#faf1f3,#f1e0e7)" },
+    { id: "mint", name: "Мятный", prev: "linear-gradient(135deg,#eef6f1,#dfeee6)" },
+    { id: "stage", name: "Сцена", prev: "url('background_opening.jpg') center/cover" },
+  ];
+  const BG_KEY = "teni_admin_bg";
+  const currentBg = () => localStorage.getItem(BG_KEY) || "light";
+  function applyBg(id) { document.body.dataset.bg = id || "light"; }
+
+  // ── Настройки: push ──
+  function pushSupported() {
+    return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  }
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  async function enablePush() {
+    if (!pushSupported()) throw new Error("Push не поддерживается на этом устройстве.");
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("Нужно разрешить уведомления в системном окне.");
+    const info = await api("/api/push/public-key");
+    if (!info.enabled || !info.publicKey) throw new Error("Push не настроен на сервере (нет VAPID-ключей).");
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(info.publicKey),
+      });
+    }
+    await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ subscription: sub }) });
+  }
+  async function disablePush() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {});
+      await sub.unsubscribe().catch(() => {});
+    }
+  }
+  async function isPushOn() {
+    if (!pushSupported() || Notification.permission !== "granted") return false;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      return Boolean(await reg.pushManager.getSubscription());
+    } catch { return false; }
+  }
+
+  async function refreshPushUI() {
+    const toggle = document.getElementById("push-toggle");
+    const hint = document.getElementById("push-hint");
+    const testBtn = document.getElementById("push-test");
+    if (!toggle) return;
+    if (!pushSupported()) {
+      toggle.checked = false; toggle.disabled = true; testBtn.hidden = true;
+      hint.textContent = "Это устройство/браузер не поддерживает пуш. На iPhone: добавьте приложение на экран «Домой» (Поделиться → На экран «Домой»), откройте его как приложение и включите уведомления здесь.";
+      return;
+    }
+    if (Notification.permission === "denied") {
+      toggle.checked = false; testBtn.hidden = true;
+      hint.textContent = "Уведомления запрещены в настройках браузера/системы для этого сайта. Разрешите их и повторите.";
+      return;
+    }
+    const on = await isPushOn();
+    toggle.checked = on;
+    testBtn.hidden = !on;
+    hint.textContent = on
+      ? "Включены. Пуш придёт всем устройствам с этой PWA, когда участник ответит в переписке."
+      : "Включите, чтобы получать пуш при новом сообщении от участника.";
+  }
+
+  function openSettingsDrawer() {
+    const bgHtml = BACKGROUNDS.map((b) => `
+      <button type="button" class="bg-swatch ${currentBg() === b.id ? "is-active" : ""}" data-bg="${b.id}">
+        <span class="bg-swatch-prev" style="background:${b.prev}"></span>
+        <span class="bg-swatch-name">${esc(b.name)}</span>
+      </button>`).join("");
+
+    openDrawer(`
+      <span class="d-kicker">Настройки</span>
+      <h2 class="d-title">Настройки</h2>
+
+      <div class="set-block">
+        <div class="d-section-title">Уведомления</div>
+        <div class="set-row">
+          <div class="set-row-text">
+            <div class="set-row-title">Пуш о новых сообщениях</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="push-toggle">
+            <span class="switch-track"></span>
+          </label>
+        </div>
+        <p class="set-hint" id="push-hint">Загрузка…</p>
+        <button class="btn btn-ghost" id="push-test" type="button" style="margin-top:12px" hidden>Отправить тестовое</button>
+        <p class="set-status" id="push-status"></p>
+      </div>
+
+      <div class="set-block">
+        <div class="d-section-title">Фон приложения</div>
+        <div class="bg-grid" id="bg-grid">${bgHtml}</div>
+      </div>
+    `);
+
+    // Фон
+    el.drawerBody.querySelectorAll(".bg-swatch").forEach((sw) => {
+      sw.addEventListener("click", () => {
+        const id = sw.dataset.bg;
+        localStorage.setItem(BG_KEY, id);
+        applyBg(id);
+        el.drawerBody.querySelectorAll(".bg-swatch").forEach((s) => s.classList.toggle("is-active", s.dataset.bg === id));
+      });
+    });
+
+    // Push
+    refreshPushUI();
+    const toggle = document.getElementById("push-toggle");
+    const status = document.getElementById("push-status");
+    const testBtn = document.getElementById("push-test");
+    toggle.addEventListener("change", async () => {
+      status.className = "set-status"; status.textContent = "";
+      toggle.disabled = true;
+      try {
+        if (toggle.checked) { await enablePush(); status.className = "set-status ok"; status.textContent = "Готово, уведомления включены."; }
+        else { await disablePush(); status.textContent = "Уведомления выключены."; }
+      } catch (err) {
+        status.className = "set-status err"; status.textContent = err.message || "Не удалось изменить настройку.";
+      } finally {
+        toggle.disabled = false;
+        refreshPushUI();
+      }
+    });
+    testBtn.addEventListener("click", async () => {
+      status.className = "set-status"; status.textContent = "Отправляем…";
+      try {
+        const r = await api("/api/push/test", { method: "POST" });
+        status.className = "set-status ok"; status.textContent = `Отправлено. Устройств получило: ${r.sent}.`;
+      } catch (err) {
+        status.className = "set-status err"; status.textContent = err.message || "Не удалось отправить.";
+      }
+    });
+  }
+
   // ── Табы ──
   function switchTab(tab) {
     state.tab = tab;
@@ -571,6 +725,8 @@
   el.tabbarBtns.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
   if (el.tabbarRefresh) el.tabbarRefresh.addEventListener("click", () => manualRefresh(el.tabbarRefresh));
   if (el.tabbarLogout) el.tabbarLogout.addEventListener("click", doLogout);
+  if (el.settingsBtn) el.settingsBtn.addEventListener("click", openSettingsDrawer);
+  if (el.tabbarSettings) el.tabbarSettings.addEventListener("click", openSettingsDrawer);
   el.appsSearch.addEventListener("input", renderApps);
   el.categoryFilter.addEventListener("change", renderApps);
   el.statusFilter.addEventListener("change", renderApps);
@@ -590,6 +746,7 @@
     loadAll();
   }, 45000);
 
+  applyBg(currentBg());
   fillCategoryFilter();
   if (getToken()) showApp();
   else showLogin();

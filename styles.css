@@ -80,6 +80,8 @@ button, a, label, .tab, .tabbar-btn, .app-card, .chat-card, .field, .btn {
 .btn-ghost:hover { background: var(--surface-2); border-color: rgba(0, 0, 0, 0.16); }
 .btn-accent { background: var(--accent); color: #fff; }
 .btn-accent:hover { background: #0077ed; }
+.btn-icon { padding: 0; width: 40px; flex: 0 0 auto; }
+.btn-icon svg { display: block; }
 
 .field {
   width: 100%;
@@ -583,6 +585,72 @@ select.field option { background: #fff; color: var(--ink); }
   .topbar-actions .btn { padding: 0 12px; }
   .app-card-name { font-size: 16px; }
   .d-row { grid-template-columns: 92px 1fr; }
+}
+
+/* ── Настройки ── */
+.set-block { margin-bottom: 26px; }
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+}
+.set-row-text { min-width: 0; }
+.set-row-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+.set-hint { margin: 8px 2px 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.set-status { margin: 10px 2px 0; font-size: 13px; font-weight: 600; }
+.set-status.ok { color: var(--ok); }
+.set-status.err { color: var(--danger); }
+.set-status.warn { color: var(--warn); }
+
+/* Тумблер */
+.switch { position: relative; flex: 0 0 auto; width: 52px; height: 31px; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch-track {
+  position: absolute; inset: 0;
+  background: #e4e4e8;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+  pointer-events: none;
+}
+.switch-track::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 27px; height: 27px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: transform 0.2s cubic-bezier(0.22,1,0.36,1);
+}
+.switch input:checked + .switch-track { background: #34c759; }
+.switch input:checked + .switch-track::after { transform: translateX(21px); }
+.switch input:disabled + .switch-track { opacity: 0.5; }
+
+/* Выбор фона */
+.bg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px; }
+.bg-swatch {
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  background: none;
+  box-shadow: var(--shadow-sm);
+}
+.bg-swatch-prev { height: 54px; border-radius: 11px 11px 0 0; }
+.bg-swatch-name { display: block; padding: 7px 4px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface); }
+.bg-swatch.is-active { border-color: var(--accent); }
+.bg-swatch.is-active .bg-swatch-name { color: var(--accent); }
+
+/* ── Фоны приложения ── */
+body[data-bg="warm"]  { background: linear-gradient(180deg, #f8f4ef 0%, #efe6da 100%) fixed; }
+body[data-bg="cool"]  { background: linear-gradient(180deg, #eef2f8 0%, #e2eaf5 100%) fixed; }
+body[data-bg="rose"]  { background: linear-gradient(180deg, #faf1f3 0%, #f1e0e7 100%) fixed; }
+body[data-bg="mint"]  { background: linear-gradient(180deg, #eef6f1 0%, #dfeee6 100%) fixed; }
+body[data-bg="stage"] {
+  background: linear-gradient(rgba(245,245,247,0.84), rgba(245,245,247,0.93)),
+    url("background_opening.jpg") center / cover fixed no-repeat;
 }
 
 /* ── Нижняя навигация (PWA / моб.) ── */
