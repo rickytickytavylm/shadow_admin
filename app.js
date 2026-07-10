@@ -36,6 +36,9 @@
     refreshBtn: document.getElementById("refresh-btn"),
     logoutBtn: document.getElementById("logout-btn"),
     tabs: Array.from(document.querySelectorAll(".tab")),
+    tabbarBtns: Array.from(document.querySelectorAll(".tabbar-btn[data-tab]")),
+    tabbarRefresh: document.getElementById("tabbar-refresh"),
+    tabbarLogout: document.getElementById("tabbar-logout"),
     tabAppsCount: document.getElementById("tab-apps-count"),
     tabChatsCount: document.getElementById("tab-chats-count"),
     viewApps: document.getElementById("view-apps"),
@@ -483,6 +486,7 @@
   function switchTab(tab) {
     state.tab = tab;
     el.tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
+    el.tabbarBtns.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
   }
@@ -509,9 +513,13 @@
     el.tokenInput.value = "";
     showApp();
   });
+  const doLogout = () => { clearToken(); closeDrawer(); showLogin(); };
   el.refreshBtn.addEventListener("click", loadAll);
-  el.logoutBtn.addEventListener("click", () => { clearToken(); closeDrawer(); showLogin(); });
+  el.logoutBtn.addEventListener("click", doLogout);
   el.tabs.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+  el.tabbarBtns.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+  if (el.tabbarRefresh) el.tabbarRefresh.addEventListener("click", loadAll);
+  if (el.tabbarLogout) el.tabbarLogout.addEventListener("click", doLogout);
   el.appsSearch.addEventListener("input", renderApps);
   el.categoryFilter.addEventListener("change", renderApps);
   el.statusFilter.addEventListener("change", renderApps);
