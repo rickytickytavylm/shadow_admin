@@ -17,13 +17,14 @@
   };
 
   const STATUS_LABELS = {
+    awaiting_payment: "Не оплачено",
+    paid: "Оплачено",
     new: "Новая",
     reviewing: "На рассмотрении",
     accepted: "Прошёл отбор",
     rejected: "Отклонена",
-    paid: "Оплачено",
   };
-  const STATUS_ORDER = ["new", "reviewing", "accepted", "rejected", "paid"];
+  const STATUS_ORDER = ["awaiting_payment", "paid", "new", "reviewing", "accepted", "rejected"];
 
   const el = {
     loginScreen: document.getElementById("login-screen"),
@@ -330,6 +331,15 @@
         ${row("Роль", esc(roleLabels[a.role] || a.role || "—"))}
         ${row("Стаж", esc(a.experience || "—"))}
         ${a.awards ? row("Призовые места", esc(a.awards)) : ""}
+      </dl>
+
+      <div class="d-section-title">Оплата</div>
+      <dl class="d-grid">
+        ${row("Статус", a.status === "paid"
+          ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено</span>`
+          : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`)}
+        ${row("Сумма", a.paidAmount ? esc(a.paidAmount) + " ₽" : "—")}
+        ${a.paymentId ? row("ID платежа", `<span class="mono">${esc(a.paymentId)}</span>`) : ""}
       </dl>
 
       <div class="d-section-title">Категории</div>
