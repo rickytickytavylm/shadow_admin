@@ -495,6 +495,17 @@
   el.drawerBackdrop.addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.drawer.hidden) closeDrawer(); });
 
+  // Авто-обновление: заявки, созданные на сервере по факту оплаты (webhook или
+  // «сборщик»), подтягиваются сами — без ручного «Обновить». Не дёргаем список,
+  // когда открыта карточка заявки или вкладка неактивна.
+  setInterval(() => {
+    if (!getToken()) return;
+    if (el.app.hidden) return;
+    if (!el.drawer.hidden) return;
+    if (document.visibilityState === "hidden") return;
+    loadAll();
+  }, 45000);
+
   fillCategoryFilter();
   if (getToken()) showApp();
   else showLogin();
