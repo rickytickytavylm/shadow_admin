@@ -37,14 +37,10 @@
     tabbarRefresh: document.getElementById("tabbar-refresh"),
     tabAppsCount: document.getElementById("tab-apps-count"),
     tabChatsCount: document.getElementById("tab-chats-count"),
-    tabTrashCount: document.getElementById("tab-trash-count"),
     viewApps: document.getElementById("view-apps"),
     viewChats: document.getElementById("view-chats"),
-    viewTrash: document.getElementById("view-trash"),
     appsGrid: document.getElementById("apps-grid"),
     appsEmpty: document.getElementById("apps-empty"),
-    trashGrid: document.getElementById("trash-grid"),
-    trashEmpty: document.getElementById("trash-empty"),
     appsSearch: document.getElementById("apps-search"),
     categoryFilter: document.getElementById("category-filter"),
     statusFilter: document.getElementById("status-filter"),
@@ -162,28 +158,10 @@
     }
   }
 
-  const TRASH_KEY = "teni_admin_trash";
-
-  function getTrashIds() {
-    try {
-      const raw = localStorage.getItem(TRASH_KEY);
-      const arr = raw ? JSON.parse(raw) : [];
-      return Array.isArray(arr) ? arr.map(String) : [];
-    } catch { return []; }
-  }
-  function setTrashIds(ids) {
-    localStorage.setItem(TRASH_KEY, JSON.stringify([...new Set(ids.map(String))]));
-  }
-  function addToTrash(id) { setTrashIds([...getTrashIds(), String(id)]); }
-  function removeFromTrash(id) { setTrashIds(getTrashIds().filter((x) => x !== String(id))); }
-  function isTrashed(id) { return getTrashIds().includes(String(id)); }
   function setBadge(badgeEl, count) {
     if (!badgeEl) return;
     badgeEl.textContent = count;
     badgeEl.dataset.zero = count > 0 ? "0" : "1";
-  }
-  function updateTrashCount() {
-    setBadge(el.tabTrashCount, getTrashIds().length);
   }
 
   // ── Загрузка данных ──
@@ -197,12 +175,10 @@
       state.apps = apps.items || [];
       state.emailEnabled = Boolean(apps.emailEnabled);
       state.chats = chats.items || [];
-      setBadge(el.tabAppsCount, state.apps.filter((a) => !isTrashed(a.id)).length);
+      setBadge(el.tabAppsCount, state.apps.length);
       setBadge(el.tabChatsCount, state.chats.length);
-      updateTrashCount();
       renderApps();
       renderChats();
-      if (state.tab === "trash") renderTrash();
 
       // В фоне проверяем новые ответы участников по почте; если пришли — обновим.
       if (apps.inboxEnabled) {
@@ -228,7 +204,6 @@
     const cat = el.categoryFilter.value;
     const st = el.statusFilter.value;
     return state.apps.filter((a) => {
-      if (isTrashed(a.id)) return false;
       if (cat && a.category !== cat) return false;
       if (st === "paid") {
         if (!isPaid(a)) return false;
@@ -274,75 +249,20 @@
       </div>`;
   }
 
-  async function confirmTrash(a) {
-    const name = a.fullName || a.email || "без имени";
-    const ok = await showConfirm({
-      title: "В корзину?",
-      message: `Заявка «${name}» будет скрыта из списка.`,
-    });
-    if (!ok) return;
-    addToTrash(a.id);
-    toast("Заявка перенесена в корзину", "ok");
-    setBadge(el.tabAppsCount, state.apps.filter((x) => !isTrashed(x.id)).length);
-    updateTrashCount();
-    renderApps();
-    if (state.tab === "trash") renderTrash();
-  }
-
   function renderApps() {
     const items = filteredApps();
     el.appsGrid.innerHTML = "";
     el.appsEmpty.hidden = items.length > 0;
     const frag = document.createDocumentFragment();
     for (const a of items) {
-      const wrap = document.createElement("div");
-      wrap.className = "app-card-wrap";
-      wrap.innerHTML = `
-        <button type="button" class="app-card-del" aria-label="В корзину" title="В корзину">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-        </button>
-        <button type="button" class="app-card">${buildAppCardHtml(a)}</button>`;
-      wrap.querySelector(".app-card").addEventListener("click", () => openAppDrawer(a.id));
-      wrap.querySelector(".app-card-del").addEventListener("click", (e) => {
-        e.stopPropagation();
-        confirmTrash(a);
-      });
-      frag.appendChild(wrap);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "app-card";
+      card.addEventListener("click", () => openAppDrawer(a.id));
+      card.innerHTML = buildAppCardHtml(a);
+      frag.appendChild(card);
     }
     el.appsGrid.appendChild(frag);
-  }
-
-  function trashedApps() {
-    const trash = new Set(getTrashIds());
-    return state.apps.filter((a) => trash.has(String(a.id)));
-  }
-
-  function renderTrash() {
-    const items = trashedApps();
-    el.trashGrid.innerHTML = "";
-    el.trashEmpty.hidden = items.length > 0;
-    const frag = document.createDocumentFragment();
-    for (const a of items) {
-      const wrap = document.createElement("div");
-      wrap.className = "trash-item";
-      wrap.innerHTML = `
-        <button type="button" class="app-card">${buildAppCardHtml(a)}</button>
-        <div class="trash-item-actions">
-          <button type="button" class="btn btn-ghost trash-restore">Вернуть из корзины</button>
-        </div>`;
-      wrap.querySelector(".app-card").addEventListener("click", () => openAppDrawer(a.id));
-      wrap.querySelector(".trash-restore").addEventListener("click", (e) => {
-        e.stopPropagation();
-        removeFromTrash(a.id);
-        toast("Заявка возвращена", "ok");
-        setBadge(el.tabAppsCount, state.apps.filter((x) => !isTrashed(x.id)).length);
-        updateTrashCount();
-        renderApps();
-        renderTrash();
-      });
-      frag.appendChild(wrap);
-    }
-    el.trashGrid.appendChild(frag);
   }
 
   // ── Рендер чатов ──
@@ -809,8 +729,6 @@
     el.tabbarBtns.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
-    el.viewTrash.hidden = tab !== "trash";
-    if (tab === "trash") renderTrash();
   }
 
   // ── Экраны ──
@@ -889,7 +807,7 @@
   }, 45000);
 
   applyBg(currentBg());
-  updateTrashCount();
+  localStorage.removeItem("teni_admin_trash");
   fillCategoryFilter();
   if (getToken()) showApp();
   else showLogin();
