@@ -639,7 +639,21 @@ select.field option { background: #fff; color: var(--ink); }
   box-shadow: var(--shadow-sm);
 }
 .bg-swatch-prev { height: 54px; border-radius: 11px 11px 0 0; }
-.bg-swatch-name { display: block; padding: 7px 4px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface); }
+.bg-swatch-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 4px;
+  background: var(--surface);
+}
+.bg-swatch-dot {
+  flex: 0 0 auto;
+  width: 15px; height: 15px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+.bg-swatch-name { font-size: 12px; font-weight: 600; color: var(--muted); }
 .bg-swatch.is-active { border-color: var(--accent); }
 .bg-swatch.is-active .bg-swatch-name { color: var(--accent); }
 

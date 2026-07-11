@@ -513,12 +513,12 @@
 
   // ── Настройки: фон ──
   const BACKGROUNDS = [
-    { id: "light", name: "Светлый", prev: "#f5f5f7" },
-    { id: "warm", name: "Тёплый", prev: "linear-gradient(135deg,#f8f4ef,#efe6da)" },
-    { id: "cool", name: "Холодный", prev: "linear-gradient(135deg,#eef2f8,#e2eaf5)" },
-    { id: "rose", name: "Розовый", prev: "linear-gradient(135deg,#faf1f3,#f1e0e7)" },
-    { id: "mint", name: "Мятный", prev: "linear-gradient(135deg,#eef6f1,#dfeee6)" },
-    { id: "stage", name: "Сцена", prev: "url('background_opening.jpg') center/cover" },
+    { id: "light", name: "Светлый", prev: "#f5f5f7", dot: "#f5f5f7" },
+    { id: "warm", name: "Тёплый", prev: "linear-gradient(135deg,#f8f4ef,#efe6da)", dot: "#efe6da" },
+    { id: "cool", name: "Холодный", prev: "linear-gradient(135deg,#eef2f8,#e2eaf5)", dot: "#e2eaf5" },
+    { id: "rose", name: "Розовый", prev: "linear-gradient(135deg,#faf1f3,#f1e0e7)", dot: "#f1e0e7" },
+    { id: "mint", name: "Мятный", prev: "linear-gradient(135deg,#eef6f1,#dfeee6)", dot: "#dfeee6" },
+    { id: "stage", name: "Сцена", prev: "url('background_opening.jpg') center/cover", dot: "#2a2a2e" },
   ];
   const BG_KEY = "teni_admin_bg";
   const currentBg = () => localStorage.getItem(BG_KEY) || "light";
@@ -595,7 +595,10 @@
     const bgHtml = BACKGROUNDS.map((b) => `
       <button type="button" class="bg-swatch ${currentBg() === b.id ? "is-active" : ""}" data-bg="${b.id}">
         <span class="bg-swatch-prev" style="background:${b.prev}"></span>
-        <span class="bg-swatch-name">${esc(b.name)}</span>
+        <span class="bg-swatch-foot">
+          <span class="bg-swatch-dot" style="background:${b.dot}"></span>
+          <span class="bg-swatch-name">${esc(b.name)}</span>
+        </span>
       </button>`).join("");
 
     openDrawer(`
