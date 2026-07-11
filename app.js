@@ -32,11 +32,7 @@
     tokenInput: document.getElementById("token-input"),
     loginError: document.getElementById("login-error"),
     app: document.getElementById("app"),
-    statusLine: document.getElementById("status-line"),
-    refreshBtn: document.getElementById("refresh-btn"),
-    settingsBtn: document.getElementById("settings-btn"),
     tabbarSettings: document.getElementById("tabbar-settings"),
-    tabs: Array.from(document.querySelectorAll(".tab")),
     tabbarBtns: Array.from(document.querySelectorAll(".tabbar-btn[data-tab]")),
     tabbarRefresh: document.getElementById("tabbar-refresh"),
     tabAppsCount: document.getElementById("tab-apps-count"),
@@ -60,6 +56,12 @@
     drawerBody: document.getElementById("drawer-body"),
     drawerClose: document.getElementById("drawer-close"),
     toast: document.getElementById("toast"),
+    alert: document.getElementById("alert"),
+    alertBackdrop: document.getElementById("alert-backdrop"),
+    alertTitle: document.getElementById("alert-title"),
+    alertMessage: document.getElementById("alert-message"),
+    alertCancel: document.getElementById("alert-cancel"),
+    alertOk: document.getElementById("alert-ok"),
   };
 
   const state = {
@@ -93,6 +95,36 @@
       el.toast.classList.remove("is-open");
       setTimeout(() => { el.toast.hidden = true; }, 300);
     }, 3600);
+  }
+
+  // Apple-style подтверждение по центру экрана.
+  let alertResolver = null;
+  function closeAlert(result) {
+    if (!el.alert || el.alert.hidden) return;
+    el.alert.classList.remove("is-open");
+    el.alertBackdrop.classList.remove("is-open");
+    setTimeout(() => {
+      el.alert.hidden = true;
+      el.alertBackdrop.hidden = true;
+    }, 280);
+    if (alertResolver) {
+      const r = alertResolver;
+      alertResolver = null;
+      r(result);
+    }
+  }
+  function showConfirm({ title, message }) {
+    return new Promise((resolve) => {
+      alertResolver = resolve;
+      el.alertTitle.textContent = title;
+      el.alertMessage.textContent = message;
+      el.alert.hidden = false;
+      el.alertBackdrop.hidden = false;
+      requestAnimationFrame(() => {
+        el.alert.classList.add("is-open");
+        el.alertBackdrop.classList.add("is-open");
+      });
+    });
   }
 
   function fmtDate(iso) {
@@ -145,14 +177,18 @@
   function addToTrash(id) { setTrashIds([...getTrashIds(), String(id)]); }
   function removeFromTrash(id) { setTrashIds(getTrashIds().filter((x) => x !== String(id))); }
   function isTrashed(id) { return getTrashIds().includes(String(id)); }
+  function setBadge(badgeEl, count) {
+    if (!badgeEl) return;
+    badgeEl.textContent = count;
+    badgeEl.dataset.zero = count > 0 ? "0" : "1";
+  }
   function updateTrashCount() {
-    if (el.tabTrashCount) el.tabTrashCount.textContent = getTrashIds().length;
+    setBadge(el.tabTrashCount, getTrashIds().length);
   }
 
   // ── Загрузка данных ──
   async function loadAll() {
     if (!getToken()) return showLogin();
-    el.statusLine.textContent = "Загрузка…";
     try {
       const [apps, chats] = await Promise.all([
         api("/api/applications?limit=1000"),
@@ -161,13 +197,12 @@
       state.apps = apps.items || [];
       state.emailEnabled = Boolean(apps.emailEnabled);
       state.chats = chats.items || [];
-      el.tabAppsCount.textContent = state.apps.filter((a) => !isTrashed(a.id)).length;
-      el.tabChatsCount.textContent = state.chats.length;
+      setBadge(el.tabAppsCount, state.apps.filter((a) => !isTrashed(a.id)).length);
+      setBadge(el.tabChatsCount, state.chats.length);
       updateTrashCount();
       renderApps();
       renderChats();
       if (state.tab === "trash") renderTrash();
-      el.statusLine.textContent = `Обновлено: ${new Date().toLocaleTimeString("ru-RU")}${state.emailEnabled ? "" : " · почта (SMTP) не настроена — ответы отключены"}`;
 
       // В фоне проверяем новые ответы участников по почте; если пришли — обновим.
       if (apps.inboxEnabled) {
@@ -177,7 +212,7 @@
       }
     } catch (err) {
       if (err.message === "unauthorized") return;
-      el.statusLine.textContent = `Ошибка загрузки: ${err.message}. Проверьте API_BASE в config.js и что сервер запущен.`;
+      toast(`Ошибка загрузки: ${err.message}`, "err");
     }
   }
 
@@ -239,11 +274,16 @@
       </div>`;
   }
 
-  function confirmTrash(a) {
-    if (!window.confirm(`Перенести заявку «${a.fullName || a.email || "без имени"}» в корзину?`)) return;
+  async function confirmTrash(a) {
+    const name = a.fullName || a.email || "без имени";
+    const ok = await showConfirm({
+      title: "В корзину?",
+      message: `Заявка «${name}» будет скрыта из списка.`,
+    });
+    if (!ok) return;
     addToTrash(a.id);
     toast("Заявка перенесена в корзину", "ok");
-    el.tabAppsCount.textContent = state.apps.filter((x) => !isTrashed(x.id)).length;
+    setBadge(el.tabAppsCount, state.apps.filter((x) => !isTrashed(x.id)).length);
     updateTrashCount();
     renderApps();
     if (state.tab === "trash") renderTrash();
@@ -295,7 +335,7 @@
         e.stopPropagation();
         removeFromTrash(a.id);
         toast("Заявка возвращена", "ok");
-        el.tabAppsCount.textContent = state.apps.filter((x) => !isTrashed(x.id)).length;
+        setBadge(el.tabAppsCount, state.apps.filter((x) => !isTrashed(x.id)).length);
         updateTrashCount();
         renderApps();
         renderTrash();
@@ -766,7 +806,6 @@
   // ── Табы ──
   function switchTab(tab) {
     state.tab = tab;
-    el.tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
     el.tabbarBtns.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
@@ -809,23 +848,18 @@
   async function manualRefresh(btn) {
     if (refreshing) return;
     refreshing = true;
-    [el.refreshBtn, el.tabbarRefresh].forEach((b) => b && b.classList.add("is-spinning"));
-    if (el.refreshBtn) { el.refreshBtn.disabled = true; }
+    if (el.tabbarRefresh) el.tabbarRefresh.classList.add("is-spinning");
     try {
       await loadAll();
       toast("Обновлено", "ok");
     } finally {
       refreshing = false;
-      [el.refreshBtn, el.tabbarRefresh].forEach((b) => b && b.classList.remove("is-spinning"));
-      if (el.refreshBtn) { el.refreshBtn.disabled = false; }
+      if (el.tabbarRefresh) el.tabbarRefresh.classList.remove("is-spinning");
     }
   }
 
-  el.refreshBtn.addEventListener("click", () => manualRefresh(el.refreshBtn));
-  el.tabs.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
-  el.tabbarBtns.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
   if (el.tabbarRefresh) el.tabbarRefresh.addEventListener("click", () => manualRefresh(el.tabbarRefresh));
-  if (el.settingsBtn) el.settingsBtn.addEventListener("click", openSettingsDrawer);
+  el.tabbarBtns.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
   if (el.tabbarSettings) el.tabbarSettings.addEventListener("click", openSettingsDrawer);
   el.appsSearch.addEventListener("input", renderApps);
   el.categoryFilter.addEventListener("change", renderApps);
@@ -833,7 +867,15 @@
   el.chatsSearch.addEventListener("input", renderChats);
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.drawer.hidden) closeDrawer(); });
+  el.alertCancel.addEventListener("click", () => closeAlert(false));
+  el.alertOk.addEventListener("click", () => closeAlert(true));
+  el.alertBackdrop.addEventListener("click", () => closeAlert(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (!el.alert.hidden) closeAlert(false);
+      else if (!el.drawer.hidden) closeDrawer();
+    }
+  });
 
   // Авто-обновление: заявки, созданные на сервере по факту оплаты (webhook или
   // «сборщик»), подтягиваются сами — без ручного «Обновить». Не дёргаем список,
