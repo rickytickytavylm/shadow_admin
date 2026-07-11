@@ -249,111 +249,25 @@
     if (state.tab === "trash") renderTrash();
   }
 
-  function bindSwipeRow(row, onDelete) {
-    const content = row.querySelector(".swipe-content");
-    const deleteBtn = row.querySelector(".swipe-delete");
-    let startX = 0;
-    let currentX = 0;
-    let dragging = false;
-    let open = false;
-    let moved = false;
-    const THRESH = 48;
-    const MAX = 72;
-
-    function setOffset(x) {
-      const clamped = Math.max(-MAX, Math.min(0, x));
-      content.style.transform = `translateX(${clamped}px)`;
-      row.classList.toggle("is-open", clamped <= -THRESH);
-    }
-
-    deleteBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onDelete();
-      setOffset(0);
-      open = false;
-    });
-
-    content.addEventListener("touchstart", (e) => {
-      if (e.touches.length !== 1) return;
-      startX = e.touches[0].clientX;
-      currentX = open ? -MAX : 0;
-      dragging = true;
-      moved = false;
-    }, { passive: true });
-
-    content.addEventListener("touchmove", (e) => {
-      if (!dragging) return;
-      const dx = e.touches[0].clientX - startX;
-      if (Math.abs(dx) > 8) moved = true;
-      setOffset(currentX + dx);
-    }, { passive: true });
-
-    const end = () => {
-      if (!dragging) return;
-      dragging = false;
-      const match = content.style.transform.match(/translateX\((-?\d+)/);
-      const x = match ? parseInt(match[1], 10) : 0;
-      if (x < -THRESH / 2) {
-        setOffset(-MAX);
-        open = true;
-      } else {
-        setOffset(0);
-        open = false;
-      }
-    };
-    content.addEventListener("touchend", end);
-    content.addEventListener("touchcancel", end);
-
-    document.addEventListener("click", (e) => {
-      if (open && !row.contains(e.target)) {
-        setOffset(0);
-        open = false;
-      }
-    });
-
-    const card = content.querySelector(".app-card");
-    card.addEventListener("click", (e) => {
-      if (moved) {
-        e.preventDefault();
-        e.stopPropagation();
-        moved = false;
-      }
-    });
-  }
-
   function renderApps() {
     const items = filteredApps();
     el.appsGrid.innerHTML = "";
     el.appsEmpty.hidden = items.length > 0;
     const frag = document.createDocumentFragment();
     for (const a of items) {
-      const row = document.createElement("div");
-      row.className = "swipe-row";
-      row.innerHTML = `
-        <div class="swipe-action">
-          <button type="button" class="swipe-delete" aria-label="В корзину">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-          </button>
-        </div>
-        <div class="swipe-content">
-          <div class="app-card-shell">
-            <button type="button" class="app-card-del" aria-label="В корзину" title="В корзину">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
-            </button>
-            <button type="button" class="app-card">${buildAppCardHtml(a)}</button>
-          </div>
-        </div>`;
-      const card = row.querySelector(".app-card");
-      card.addEventListener("click", () => openAppDrawer(a.id));
-      const delBtn = row.querySelector(".app-card-del");
-      if (delBtn) {
-        delBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          confirmTrash(a);
-        });
-      }
-      bindSwipeRow(row, () => confirmTrash(a));
-      frag.appendChild(row);
+      const wrap = document.createElement("div");
+      wrap.className = "app-card-wrap";
+      wrap.innerHTML = `
+        <button type="button" class="app-card-del" aria-label="В корзину" title="В корзину">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        </button>
+        <button type="button" class="app-card">${buildAppCardHtml(a)}</button>`;
+      wrap.querySelector(".app-card").addEventListener("click", () => openAppDrawer(a.id));
+      wrap.querySelector(".app-card-del").addEventListener("click", (e) => {
+        e.stopPropagation();
+        confirmTrash(a);
+      });
+      frag.appendChild(wrap);
     }
     el.appsGrid.appendChild(frag);
   }
