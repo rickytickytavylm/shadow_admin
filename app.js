@@ -34,19 +34,21 @@
     app: document.getElementById("app"),
     statusLine: document.getElementById("status-line"),
     refreshBtn: document.getElementById("refresh-btn"),
-    logoutBtn: document.getElementById("logout-btn"),
     settingsBtn: document.getElementById("settings-btn"),
     tabbarSettings: document.getElementById("tabbar-settings"),
     tabs: Array.from(document.querySelectorAll(".tab")),
     tabbarBtns: Array.from(document.querySelectorAll(".tabbar-btn[data-tab]")),
     tabbarRefresh: document.getElementById("tabbar-refresh"),
-    tabbarLogout: document.getElementById("tabbar-logout"),
     tabAppsCount: document.getElementById("tab-apps-count"),
     tabChatsCount: document.getElementById("tab-chats-count"),
+    tabTrashCount: document.getElementById("tab-trash-count"),
     viewApps: document.getElementById("view-apps"),
     viewChats: document.getElementById("view-chats"),
+    viewTrash: document.getElementById("view-trash"),
     appsGrid: document.getElementById("apps-grid"),
     appsEmpty: document.getElementById("apps-empty"),
+    trashGrid: document.getElementById("trash-grid"),
+    trashEmpty: document.getElementById("trash-empty"),
     appsSearch: document.getElementById("apps-search"),
     categoryFilter: document.getElementById("category-filter"),
     statusFilter: document.getElementById("status-filter"),
@@ -128,6 +130,25 @@
     }
   }
 
+  const TRASH_KEY = "teni_admin_trash";
+
+  function getTrashIds() {
+    try {
+      const raw = localStorage.getItem(TRASH_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.map(String) : [];
+    } catch { return []; }
+  }
+  function setTrashIds(ids) {
+    localStorage.setItem(TRASH_KEY, JSON.stringify([...new Set(ids.map(String))]));
+  }
+  function addToTrash(id) { setTrashIds([...getTrashIds(), String(id)]); }
+  function removeFromTrash(id) { setTrashIds(getTrashIds().filter((x) => x !== String(id))); }
+  function isTrashed(id) { return getTrashIds().includes(String(id)); }
+  function updateTrashCount() {
+    if (el.tabTrashCount) el.tabTrashCount.textContent = getTrashIds().length;
+  }
+
   // ── Загрузка данных ──
   async function loadAll() {
     if (!getToken()) return showLogin();
@@ -140,10 +161,12 @@
       state.apps = apps.items || [];
       state.emailEnabled = Boolean(apps.emailEnabled);
       state.chats = chats.items || [];
-      el.tabAppsCount.textContent = state.apps.length;
+      el.tabAppsCount.textContent = state.apps.filter((a) => !isTrashed(a.id)).length;
       el.tabChatsCount.textContent = state.chats.length;
+      updateTrashCount();
       renderApps();
       renderChats();
+      if (state.tab === "trash") renderTrash();
       el.statusLine.textContent = `Обновлено: ${new Date().toLocaleTimeString("ru-RU")}${state.emailEnabled ? "" : " · почта (SMTP) не настроена — ответы отключены"}`;
 
       // В фоне проверяем новые ответы участников по почте; если пришли — обновим.
@@ -170,6 +193,7 @@
     const cat = el.categoryFilter.value;
     const st = el.statusFilter.value;
     return state.apps.filter((a) => {
+      if (isTrashed(a.id)) return false;
       if (cat && a.category !== cat) return false;
       if (st === "paid") {
         if (!isPaid(a)) return false;
@@ -191,40 +215,180 @@
     return `<span class="chip st-${esc(s)}"><span class="status-dot"></span>${esc(statusLabel(s))}</span>`;
   }
 
+  function buildAppCardHtml(a) {
+    const msgs = Array.isArray(a.messages) ? a.messages : [];
+    const incoming = msgs.filter((m) => m.direction === "in").length;
+    const cardCats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
+    const cardCatsHtml = cardCats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join("");
+    return `
+      <div class="app-card-top">
+        <div>
+          <div class="app-card-name">${esc(a.fullName || "Без имени")}</div>
+          <div class="app-card-date">${esc(fmtDate(a.createdAt))}</div>
+        </div>
+      </div>
+      <div class="app-card-cats">${cardCatsHtml || "—"}</div>
+      <div class="app-card-row"><b>${esc(a.email || "—")}</b></div>
+      <div class="app-card-row">${esc(a.phone || "—")}${a.city ? " · " + esc(a.city) : ""}</div>
+      <div class="app-card-foot">
+        ${isPaid(a)
+          ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено${a.paidAmount ? " · " + esc(a.paidAmount) + " ₽" : ""}</span>`
+          : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`}
+        ${a.status && a.status !== "new" && a.status !== "awaiting_payment" && a.status !== "paid" ? statusChip(a.status) : ""}
+        ${incoming ? `<span class="chip chip-reply">✉ ${incoming}</span>` : (msgs.length ? `<span class="chip">✉ ${msgs.length}</span>` : "")}
+      </div>`;
+  }
+
+  function confirmTrash(a) {
+    if (!window.confirm(`Перенести заявку «${a.fullName || a.email || "без имени"}» в корзину?`)) return;
+    addToTrash(a.id);
+    toast("Заявка перенесена в корзину", "ok");
+    el.tabAppsCount.textContent = state.apps.filter((x) => !isTrashed(x.id)).length;
+    updateTrashCount();
+    renderApps();
+    if (state.tab === "trash") renderTrash();
+  }
+
+  function bindSwipeRow(row, onDelete) {
+    const content = row.querySelector(".swipe-content");
+    const deleteBtn = row.querySelector(".swipe-delete");
+    let startX = 0;
+    let currentX = 0;
+    let dragging = false;
+    let open = false;
+    let moved = false;
+    const THRESH = 48;
+    const MAX = 72;
+
+    function setOffset(x) {
+      const clamped = Math.max(-MAX, Math.min(0, x));
+      content.style.transform = `translateX(${clamped}px)`;
+      row.classList.toggle("is-open", clamped <= -THRESH);
+    }
+
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onDelete();
+      setOffset(0);
+      open = false;
+    });
+
+    content.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      currentX = open ? -MAX : 0;
+      dragging = true;
+      moved = false;
+    }, { passive: true });
+
+    content.addEventListener("touchmove", (e) => {
+      if (!dragging) return;
+      const dx = e.touches[0].clientX - startX;
+      if (Math.abs(dx) > 8) moved = true;
+      setOffset(currentX + dx);
+    }, { passive: true });
+
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      const match = content.style.transform.match(/translateX\((-?\d+)/);
+      const x = match ? parseInt(match[1], 10) : 0;
+      if (x < -THRESH / 2) {
+        setOffset(-MAX);
+        open = true;
+      } else {
+        setOffset(0);
+        open = false;
+      }
+    };
+    content.addEventListener("touchend", end);
+    content.addEventListener("touchcancel", end);
+
+    document.addEventListener("click", (e) => {
+      if (open && !row.contains(e.target)) {
+        setOffset(0);
+        open = false;
+      }
+    });
+
+    const card = content.querySelector(".app-card");
+    card.addEventListener("click", (e) => {
+      if (moved) {
+        e.preventDefault();
+        e.stopPropagation();
+        moved = false;
+      }
+    });
+  }
+
   function renderApps() {
     const items = filteredApps();
     el.appsGrid.innerHTML = "";
     el.appsEmpty.hidden = items.length > 0;
     const frag = document.createDocumentFragment();
     for (const a of items) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "app-card";
-      card.addEventListener("click", () => openAppDrawer(a.id));
-      const msgs = Array.isArray(a.messages) ? a.messages : [];
-      const incoming = msgs.filter((m) => m.direction === "in").length;
-      const cardCats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
-      const cardCatsHtml = cardCats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join("");
-      card.innerHTML = `
-        <div class="app-card-top">
-          <div>
-            <div class="app-card-name">${esc(a.fullName || "Без имени")}</div>
-            <div class="app-card-date">${esc(fmtDate(a.createdAt))}</div>
-          </div>
+      const row = document.createElement("div");
+      row.className = "swipe-row";
+      row.innerHTML = `
+        <div class="swipe-action">
+          <button type="button" class="swipe-delete" aria-label="В корзину">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          </button>
         </div>
-        <div class="app-card-cats">${cardCatsHtml || "—"}</div>
-        <div class="app-card-row"><b>${esc(a.email || "—")}</b></div>
-        <div class="app-card-row">${esc(a.phone || "—")}${a.city ? " · " + esc(a.city) : ""}</div>
-        <div class="app-card-foot">
-          ${isPaid(a)
-            ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено${a.paidAmount ? " · " + esc(a.paidAmount) + " ₽" : ""}</span>`
-            : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`}
-          ${a.status && a.status !== "new" && a.status !== "awaiting_payment" && a.status !== "paid" ? statusChip(a.status) : ""}
-          ${incoming ? `<span class="chip chip-reply">✉ ${incoming}</span>` : (msgs.length ? `<span class="chip">✉ ${msgs.length}</span>` : "")}
+        <div class="swipe-content">
+          <div class="app-card-shell">
+            <button type="button" class="app-card-del" aria-label="В корзину" title="В корзину">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+            </button>
+            <button type="button" class="app-card">${buildAppCardHtml(a)}</button>
+          </div>
         </div>`;
-      frag.appendChild(card);
+      const card = row.querySelector(".app-card");
+      card.addEventListener("click", () => openAppDrawer(a.id));
+      const delBtn = row.querySelector(".app-card-del");
+      if (delBtn) {
+        delBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          confirmTrash(a);
+        });
+      }
+      bindSwipeRow(row, () => confirmTrash(a));
+      frag.appendChild(row);
     }
     el.appsGrid.appendChild(frag);
+  }
+
+  function trashedApps() {
+    const trash = new Set(getTrashIds());
+    return state.apps.filter((a) => trash.has(String(a.id)));
+  }
+
+  function renderTrash() {
+    const items = trashedApps();
+    el.trashGrid.innerHTML = "";
+    el.trashEmpty.hidden = items.length > 0;
+    const frag = document.createDocumentFragment();
+    for (const a of items) {
+      const wrap = document.createElement("div");
+      wrap.className = "trash-item";
+      wrap.innerHTML = `
+        <button type="button" class="app-card">${buildAppCardHtml(a)}</button>
+        <div class="trash-item-actions">
+          <button type="button" class="btn btn-ghost trash-restore">Вернуть из корзины</button>
+        </div>`;
+      wrap.querySelector(".app-card").addEventListener("click", () => openAppDrawer(a.id));
+      wrap.querySelector(".trash-restore").addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeFromTrash(a.id);
+        toast("Заявка возвращена", "ok");
+        el.tabAppsCount.textContent = state.apps.filter((x) => !isTrashed(x.id)).length;
+        updateTrashCount();
+        renderApps();
+        renderTrash();
+      });
+      frag.appendChild(wrap);
+    }
+    el.trashGrid.appendChild(frag);
   }
 
   // ── Рендер чатов ──
@@ -518,11 +682,25 @@
     { id: "cool", name: "Холодный", prev: "linear-gradient(135deg,#eef2f8,#e2eaf5)", dot: "#e2eaf5" },
     { id: "rose", name: "Розовый", prev: "linear-gradient(135deg,#faf1f3,#f1e0e7)", dot: "#f1e0e7" },
     { id: "mint", name: "Мятный", prev: "linear-gradient(135deg,#eef6f1,#dfeee6)", dot: "#dfeee6" },
-    { id: "stage", name: "Сцена", prev: "url('background_opening.jpg') center/cover", dot: "#2a2a2e" },
+    { id: "stage", name: "Сцена", prev: "linear-gradient(rgba(12,12,14,0.55), rgba(12,12,14,0.85)), url('background_opening.jpg') center/cover", dot: "#2a2a2e" },
   ];
   const BG_KEY = "teni_admin_bg";
+  const THEME_BY_BG = {
+    light: "#f5f5f7",
+    warm: "#f8f4ef",
+    cool: "#eef2f8",
+    rose: "#faf1f3",
+    mint: "#eef6f1",
+    stage: "#0c0c0e",
+  };
   const currentBg = () => localStorage.getItem(BG_KEY) || "light";
-  function applyBg(id) { document.body.dataset.bg = id || "light"; }
+  function applyBg(id) {
+    const bg = id || "light";
+    document.body.dataset.bg = bg;
+    if (!el.app.hidden) setThemeColor(THEME_BY_BG[bg] || "#f5f5f7");
+    const appleBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (appleBar) appleBar.setAttribute("content", bg === "stage" ? "black-translucent" : "default");
+  }
 
   // ── Настройки: push ──
   function pushSupported() {
@@ -587,8 +765,8 @@
     toggle.checked = on;
     testBtn.hidden = !on;
     hint.textContent = on
-      ? "Включены. Пуш придёт всем устройствам с этой PWA, когда участник ответит в переписке."
-      : "Включите, чтобы получать пуш при новом сообщении от участника.";
+      ? "Включены. Пуш придёт всем устройствам с этой PWA: новое сообщение от участника или новая неоплаченная заявка."
+      : "Включите, чтобы получать пуш при новом сообщении или новой неоплаченной заявке.";
   }
 
   function openSettingsDrawer() {
@@ -596,7 +774,6 @@
       <button type="button" class="bg-swatch ${currentBg() === b.id ? "is-active" : ""}" data-bg="${b.id}">
         <span class="bg-swatch-prev" style="background:${b.prev}"></span>
         <span class="bg-swatch-foot">
-          <span class="bg-swatch-dot" style="background:${b.dot}"></span>
           <span class="bg-swatch-name">${esc(b.name)}</span>
         </span>
       </button>`).join("");
@@ -609,7 +786,7 @@
         <div class="d-section-title">Уведомления</div>
         <div class="set-row">
           <div class="set-row-text">
-            <div class="set-row-title">Пуш о новых сообщениях</div>
+            <div class="set-row-title">Пуш-уведомления</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="push-toggle">
@@ -625,6 +802,10 @@
         <div class="d-section-title">Фон приложения</div>
         <div class="bg-grid" id="bg-grid">${bgHtml}</div>
       </div>
+
+      <div class="set-block">
+        <button class="btn btn-ghost" id="settings-logout" type="button" style="width:100%">Выйти из аккаунта</button>
+      </div>
     `);
 
     // Фон
@@ -636,6 +817,8 @@
         el.drawerBody.querySelectorAll(".bg-swatch").forEach((s) => s.classList.toggle("is-active", s.dataset.bg === id));
       });
     });
+
+    document.getElementById("settings-logout")?.addEventListener("click", doLogout);
 
     // Push
     refreshPushUI();
@@ -673,6 +856,8 @@
     el.tabbarBtns.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
+    el.viewTrash.hidden = tab !== "trash";
+    if (tab === "trash") renderTrash();
   }
 
   // ── Экраны ──
@@ -691,7 +876,7 @@
   function showApp() {
     el.loginScreen.hidden = true;
     el.app.hidden = false;
-    setThemeColor("#f5f5f7");
+    applyBg(currentBg());
     loadAll();
   }
 
@@ -723,11 +908,9 @@
   }
 
   el.refreshBtn.addEventListener("click", () => manualRefresh(el.refreshBtn));
-  el.logoutBtn.addEventListener("click", doLogout);
   el.tabs.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
   el.tabbarBtns.forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
   if (el.tabbarRefresh) el.tabbarRefresh.addEventListener("click", () => manualRefresh(el.tabbarRefresh));
-  if (el.tabbarLogout) el.tabbarLogout.addEventListener("click", doLogout);
   if (el.settingsBtn) el.settingsBtn.addEventListener("click", openSettingsDrawer);
   if (el.tabbarSettings) el.tabbarSettings.addEventListener("click", openSettingsDrawer);
   el.appsSearch.addEventListener("input", renderApps);
@@ -750,6 +933,7 @@
   }, 45000);
 
   applyBg(currentBg());
+  updateTrashCount();
   fillCategoryFilter();
   if (getToken()) showApp();
   else showLogin();

@@ -627,34 +627,34 @@ select.field option { background: #fff; color: var(--ink); }
 .switch input:checked + .switch-track::after { transform: translateX(21px); }
 .switch input:disabled + .switch-track { opacity: 0.5; }
 
-/* Выбор фона */
-.bg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px; }
+/* Выбор фона — крупные плашки в 2 колонки (как фон чата в Telegram) */
+.bg-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 8px; }
 .bg-swatch {
   border: 2px solid transparent;
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 0;
   cursor: pointer;
   overflow: hidden;
-  background: none;
+  background: var(--surface-2);
   box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
 }
-.bg-swatch-prev { height: 54px; border-radius: 11px 11px 0 0; }
+.bg-swatch-prev {
+  height: 100px;
+  width: 100%;
+  display: block;
+  border-radius: 0;
+}
 .bg-swatch-foot {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 8px 4px;
-  background: var(--surface);
+  padding: 10px 12px;
+  background: var(--surface-2);
 }
-.bg-swatch-dot {
-  flex: 0 0 auto;
-  width: 15px; height: 15px;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-}
-.bg-swatch-name { font-size: 12px; font-weight: 600; color: var(--muted); }
-.bg-swatch.is-active { border-color: var(--accent); }
+.bg-swatch-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.bg-swatch.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(0, 113, 227, 0.35); }
 .bg-swatch.is-active .bg-swatch-name { color: var(--accent); }
 
 /* ── Фоны приложения ── */
@@ -662,10 +662,116 @@ body[data-bg="warm"]  { background: linear-gradient(180deg, #f8f4ef 0%, #efe6da 
 body[data-bg="cool"]  { background: linear-gradient(180deg, #eef2f8 0%, #e2eaf5 100%) fixed; }
 body[data-bg="rose"]  { background: linear-gradient(180deg, #faf1f3 0%, #f1e0e7 100%) fixed; }
 body[data-bg="mint"]  { background: linear-gradient(180deg, #eef6f1 0%, #dfeee6 100%) fixed; }
+
+/* «Сцена» — полноценный dark mode */
 body[data-bg="stage"] {
-  background: linear-gradient(rgba(245,245,247,0.84), rgba(245,245,247,0.93)),
+  --bg: #0c0c0e;
+  --surface: #1c1c1e;
+  --surface-2: #242426;
+  --surface-3: #2c2c2e;
+  --ink: #f5f5f7;
+  --muted: #aeaeb2;
+  --faint: #8e8e93;
+  --line: rgba(255, 255, 255, 0.12);
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.62);
+  color: var(--ink);
+  background:
+    linear-gradient(rgba(12, 12, 14, 0.82), rgba(12, 12, 14, 0.94)),
     url("background_opening.jpg") center / cover fixed no-repeat;
 }
+body[data-bg="stage"] .topbar {
+  background: rgba(28, 28, 30, 0.86);
+}
+body[data-bg="stage"] .btn-primary { background: #f5f5f7; color: #0c0c0e; }
+body[data-bg="stage"] .btn-primary:hover { background: #fff; }
+body[data-bg="stage"] .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.22); }
+body[data-bg="stage"] .app-card:hover,
+body[data-bg="stage"] .chat-card:hover { border-color: rgba(255, 255, 255, 0.18); }
+body[data-bg="stage"] select.field {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23aeaeb2' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+}
+body[data-bg="stage"] select.field option { background: #1c1c1e; color: #f5f5f7; }
+body[data-bg="stage"] .field--search {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M21 21l-4.3-4.3'/%3E%3C/svg%3E");
+}
+
+/* Свайп → корзина */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+}
+.swipe-action {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger);
+  z-index: 0;
+}
+.swipe-delete {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.swipe-content {
+  position: relative;
+  z-index: 1;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.swipe-content .app-card {
+  width: 100%;
+  margin: 0;
+}
+.app-card-shell { position: relative; }
+.app-card-del {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.app-card-del:hover { color: var(--danger); border-color: rgba(215, 0, 21, 0.35); background: rgba(215, 0, 21, 0.08); }
+@media (hover: hover) and (pointer: fine) {
+  .app-card-del { display: inline-flex; }
+}
+
+.trash-hint {
+  margin: 0 4px 16px;
+  font-size: 13px;
+  color: var(--faint);
+  line-height: 1.45;
+}
+.trash-item { display: flex; flex-direction: column; gap: 10px; }
+.trash-item .app-card { cursor: pointer; }
+.trash-item-actions { display: flex; gap: 8px; }
+.trash-restore { flex: 1; min-height: 38px; font-size: 13px; }
 
 /* ── Нижняя навигация (PWA / моб.) ── */
 .tabbar { display: none; }
@@ -712,5 +818,8 @@ body[data-bg="stage"] {
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     backdrop-filter: saturate(180%) blur(20px);
     border-top: 1px solid var(--line);
+  }
+  body[data-bg="stage"] .tabbar {
+    background: rgba(28, 28, 30, 0.92);
   }
 }
