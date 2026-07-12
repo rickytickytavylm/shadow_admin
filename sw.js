@@ -1,7 +1,7 @@
 /* Service worker для PWA «TENI · Админ».
    Приоритет — свежесть данных: код и страницы всегда тянем из сети,
    кэш используем только как офлайн-фолбэк. API (другой домен) не трогаем. */
-const CACHE = "teni-admin-v12";
+const CACHE = "teni-admin-v13";
 const CORE = [
   "./",
   "./index.html",
@@ -119,9 +119,14 @@ self.addEventListener("notificationclick", (event) => {
     (async () => {
       const all = await clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const c of all) {
+        c.postMessage({ type: "teni-refresh" });
         if ("focus" in c) return c.focus();
       }
-      if (clients.openWindow) return clients.openWindow(target);
+      if (clients.openWindow) {
+        const win = await clients.openWindow(target);
+        if (win) win.postMessage({ type: "teni-refresh" });
+        return win;
+      }
     })()
   );
 });

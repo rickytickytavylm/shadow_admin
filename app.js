@@ -64,8 +64,12 @@
     apps: [],
     chats: [],
     emailEnabled: false,
+    inboxEnabled: false,
     tab: "apps",
+    drawer: { kind: null, appId: null, chatId: null },
   };
+
+  let syncing = false;
 
   // ── Утилиты ──
   const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
@@ -165,31 +169,72 @@
   }
 
   // ── Загрузка данных ──
-  async function loadAll() {
-    if (!getToken()) return showLogin();
+  async function syncFreshData({ fetchInbox = false, silent = false } = {}) {
+    if (!getToken() || el.app.hidden || syncing) return;
+    syncing = true;
     try {
+      if (fetchInbox) {
+        await api("/api/applications/inbox/fetch", { method: "POST" }).catch(() => {});
+      }
+
       const [apps, chats] = await Promise.all([
         api("/api/applications?limit=1000"),
         api("/api/ai/chats?limit=500").catch(() => ({ items: [] })),
       ]);
       state.apps = apps.items || [];
       state.emailEnabled = Boolean(apps.emailEnabled);
+      state.inboxEnabled = Boolean(apps.inboxEnabled);
       state.chats = chats.items || [];
       setBadge(el.tabAppsCount, state.apps.length);
       setBadge(el.tabChatsCount, state.chats.length);
       renderApps();
       renderChats();
-
-      // В фоне проверяем новые ответы участников по почте; если пришли — обновим.
-      if (apps.inboxEnabled) {
-        api("/api/applications/inbox/fetch", { method: "POST" })
-          .then((r) => { if (r && r.added > 0) { toast(`Новых ответов участников: ${r.added}`, "ok"); loadAll(); } })
-          .catch(() => {});
-      }
+      refreshOpenDrawer({ preserveScroll: true });
     } catch (err) {
       if (err.message === "unauthorized") return;
-      toast(`Ошибка загрузки: ${err.message}`, "err");
+      if (!silent) toast(`Ошибка загрузки: ${err.message}`, "err");
+    } finally {
+      syncing = false;
     }
+  }
+
+  async function loadAll() {
+    if (!getToken()) return showLogin();
+    await syncFreshData({ fetchInbox: true });
+  }
+
+  function isReplyDraftOpen() {
+    const ta = document.getElementById("reply-message");
+    const subj = document.getElementById("reply-subject");
+    if (!ta) return false;
+    return document.activeElement === ta
+      || document.activeElement === subj
+      || ta.value.trim().length > 0
+      || (subj && subj.value.trim().length > 0);
+  }
+
+  function refreshOpenDrawer({ preserveScroll = false } = {}) {
+    if (el.drawer.hidden) return;
+    if (state.drawer.kind === "app" && state.drawer.appId) {
+      if (isReplyDraftOpen()) return;
+      const a = state.apps.find((x) => x.id === state.drawer.appId);
+      if (a) openAppDrawer(a.id, { preserveScroll });
+      return;
+    }
+    if (state.drawer.kind === "chat" && state.drawer.chatId) {
+      const c = state.chats.find((x) => x.sessionId === state.drawer.chatId);
+      if (c) openChatDrawer(c.sessionId, { preserveScroll });
+    }
+  }
+
+  async function openAppFromList(id) {
+    try {
+      const res = await api(`/api/applications/${id}`);
+      const idx = state.apps.findIndex((x) => x.id === id);
+      if (idx >= 0) state.apps[idx] = res.item;
+      else state.apps.unshift(res.item);
+    } catch { /* откроем из кэша */ }
+    openAppDrawer(id);
   }
 
   // Оплачено ли — независимо от рабочего статуса. Старые заявки (до новой
@@ -258,7 +303,7 @@
       const card = document.createElement("button");
       card.type = "button";
       card.className = "app-card";
-      card.addEventListener("click", () => openAppDrawer(a.id));
+      card.addEventListener("click", () => openAppFromList(a.id));
       card.innerHTML = buildAppCardHtml(a);
       frag.appendChild(card);
     }
@@ -330,22 +375,26 @@
     window.scrollTo(0, scrollLockY);
   }
 
-  function openDrawer(html) {
+  function openDrawer(html, { preserveScroll = false } = {}) {
+    const prevScroll = preserveScroll ? el.drawer.scrollTop : 0;
     el.drawerBody.innerHTML = html;
     el.drawer.hidden = false;
     el.drawerBackdrop.hidden = false;
     el.drawer.setAttribute("aria-hidden", "false");
-    el.drawer.scrollTop = 0;
+    if (preserveScroll) el.drawer.scrollTop = prevScroll;
+    else el.drawer.scrollTop = 0;
     lockScroll();
     requestAnimationFrame(() => {
       el.drawer.classList.add("is-open");
       el.drawerBackdrop.classList.add("is-open");
+      if (preserveScroll) el.drawer.scrollTop = prevScroll;
     });
   }
   function closeDrawer() {
     el.drawer.classList.remove("is-open");
     el.drawerBackdrop.classList.remove("is-open");
     el.drawer.setAttribute("aria-hidden", "true");
+    state.drawer = { kind: null, appId: null, chatId: null };
     unlockScroll();
     setTimeout(() => { el.drawer.hidden = true; el.drawerBackdrop.hidden = true; el.drawerBody.innerHTML = ""; }, 340);
   }
@@ -354,9 +403,10 @@
     return `<div class="d-row"><dt>${esc(label)}</dt><dd>${valueHtml}</dd></div>`;
   }
 
-  function openAppDrawer(id) {
+  function openAppDrawer(id, { preserveScroll = false } = {}) {
     const a = state.apps.find((x) => x.id === id);
     if (!a) return;
+    state.drawer = { kind: "app", appId: id, chatId: null };
 
     const contact = [];
     if (a.email) contact.push(`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`);
@@ -468,7 +518,7 @@
           ${row("ID заявки", `<span class="mono">${esc(a.id)}</span>`)}
         </dl>
       </details>
-    `);
+    `, { preserveScroll });
 
     // Статусы
     el.drawerBody.querySelectorAll(".d-status-btn").forEach((btn) => {
@@ -522,9 +572,10 @@
     }
   }
 
-  function openChatDrawer(sessionId) {
+  function openChatDrawer(sessionId, { preserveScroll = false } = {}) {
     const c = state.chats.find((x) => x.sessionId === sessionId);
     if (!c) return;
+    state.drawer = { kind: "chat", appId: null, chatId: sessionId };
     const msgs = c.messages || [];
     const transcript = msgs.map((m) => `
       <div class="msg msg-${m.role === "user" ? "user" : "bot"}">${esc(m.content)}<span class="msg-time">${esc(fmtDate(m.at))}</span></div>
@@ -546,7 +597,7 @@
 
       <div class="d-section-title">Переписка</div>
       <div class="transcript">${transcript || '<p class="reply-hint">Сообщений нет.</p>'}</div>
-    `);
+    `, { preserveScroll });
   }
 
   // ── Настройки: фон ──
@@ -644,6 +695,7 @@
   }
 
   function openSettingsDrawer() {
+    state.drawer = { kind: "settings", appId: null, chatId: null };
     const bgHtml = BACKGROUNDS.map((b) => `
       <button type="button" class="bg-swatch ${currentBg() === b.id ? "is-active" : ""}" data-bg="${b.id}">
         <span class="bg-swatch-prev" style="background:${b.prev}"></span>
@@ -795,16 +847,33 @@
     }
   });
 
-  // Авто-обновление: заявки, созданные на сервере по факту оплаты (webhook или
-  // «сборщик»), подтягиваются сами — без ручного «Обновить». Не дёргаем список,
-  // когда открыта карточка заявки или вкладка неактивна.
+  // Авто-обновление: подтягиваем заявки и переписку, в т.ч. когда открыта карточка.
+  function shouldAutoSync() {
+    if (!getToken()) return false;
+    if (el.app.hidden) return false;
+    if (document.visibilityState === "hidden") return false;
+    return true;
+  }
+
   setInterval(() => {
-    if (!getToken()) return;
-    if (el.app.hidden) return;
-    if (!el.drawer.hidden) return;
-    if (document.visibilityState === "hidden") return;
-    loadAll();
-  }, 45000);
+    if (!shouldAutoSync()) return;
+    const inAppDrawer = !el.drawer.hidden && state.drawer.kind === "app";
+    syncFreshData({ silent: true, fetchInbox: inAppDrawer });
+  }, 15000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && shouldAutoSync()) {
+      syncFreshData({ fetchInbox: true });
+    }
+  });
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data?.type === "teni-refresh" && shouldAutoSync()) {
+        syncFreshData({ fetchInbox: true });
+      }
+    });
+  }
 
   applyBg(currentBg());
   localStorage.removeItem("teni_admin_trash");
