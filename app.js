@@ -410,6 +410,57 @@
     el.appsGrid.appendChild(frag);
   }
 
+  // ── Экспорт заявок в Excel (SheetJS подгружается с CDN по клику) ──
+  async function exportToExcel(btn) {
+    const apps = state.apps || [];
+    if (!apps.length) { toast("Нет заявок для экспорта", "err"); return; }
+    const label = btn ? btn.querySelector("span") : null;
+    const prev = label ? label.textContent : "";
+    if (btn) { btn.disabled = true; if (label) label.textContent = "Готовим…"; }
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      const roleLabels = { student: "Ученик", teacher: "Педагог" };
+      const rows = apps.map((a) => {
+        const cats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
+        const msgs = Array.isArray(a.messages) ? a.messages : [];
+        const dispStatus = (a.status && a.status !== "new" && a.status !== "awaiting_payment")
+          ? a.status
+          : (isPaid(a) ? "paid" : "awaiting_payment");
+        return {
+          "Дата": fmtDate(a.createdAt),
+          "ФИО": a.fullName || "",
+          "Email": a.email || "",
+          "Телефон": a.phone || "",
+          "Telegram": a.telegram || "",
+          "Instagram": a.instagram || "",
+          "Город": a.city || "",
+          "Роль": roleLabels[a.role] || a.role || "",
+          "Стаж": a.experience || "",
+          "Категории": cats.map(catLabel).join(", "),
+          "Статус": statusLabel(dispStatus),
+          "Оплачено": isPaid(a) ? "Да" : "Нет",
+          "Сумма, ₽": Number(a.paidAmount) || "",
+          "Видео": a.videoUrl || "",
+          "Сообщений": msgs.length,
+          "ID платежа": a.paymentId || "",
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 32, 11, 24].map((wch) => ({ wch }));
+      if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Заявки");
+      const d = new Date().toISOString().slice(0, 10);
+      XLSX.writeFileXLSX(wb, `teni-zayavki-${d}.xlsx`);
+      toast(`Экспортировано заявок: ${rows.length}`, "ok");
+    } catch (err) {
+      console.error("[export] ", err);
+      toast("Не удалось создать Excel (нужен интернет)", "err");
+    } finally {
+      if (btn) { btn.disabled = false; if (label) label.textContent = prev; }
+    }
+  }
+
   // ── Рендер чатов ──
   function filteredChats() {
     const q = el.chatsSearch.value.trim().toLowerCase();
@@ -966,6 +1017,8 @@
   el.appsSearch.addEventListener("input", renderApps);
   el.categoryFilter.addEventListener("change", renderApps);
   el.statusFilter.addEventListener("change", renderApps);
+  const exportBtn = document.getElementById("export-excel");
+  if (exportBtn) exportBtn.addEventListener("click", () => exportToExcel(exportBtn));
   el.chatsSearch.addEventListener("input", renderChats);
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);

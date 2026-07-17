@@ -193,6 +193,17 @@ select.field option { background: #fff; color: var(--ink); }
   margin-bottom: 18px;
 }
 .field--search { flex: 1 1 260px; }
+.btn-export {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 14px; font-weight: 600;
+  padding: 0 16px; height: 44px; border-radius: 12px; cursor: pointer;
+  box-shadow: var(--shadow-sm); transition: all 0.15s ease; white-space: nowrap;
+}
+.btn-export:hover { border-color: rgba(0, 0, 0, 0.2); color: var(--accent); }
+.btn-export:disabled { opacity: 0.55; cursor: default; }
+.btn-export svg { flex-shrink: 0; }
+body[data-bg="stage"] .btn-export:hover { border-color: rgba(255, 255, 255, 0.22); }
 .field--select { flex: 0 0 auto; width: auto; min-width: 170px; }
 
 /* ── Заявки: сетка карточек ── */
@@ -561,6 +572,7 @@ body[data-bg="stage"] .alert-btn:active { background: rgba(255, 255, 255, 0.08);
   .toolbar { flex-direction: column; gap: 10px; margin-bottom: 14px; }
   .field--search,
   .field--select { flex: 1 1 auto; width: 100%; min-width: 0; }
+  .btn-export { width: 100%; justify-content: center; }
 
   .apps-grid { grid-template-columns: 1fr; gap: 12px; }
   .app-card { padding: 16px; }
