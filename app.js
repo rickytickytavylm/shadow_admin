@@ -354,6 +354,7 @@
     const cat = el.categoryFilter.value;
     const st = el.statusFilter.value;
     return state.apps.filter((a) => {
+      if (state.onlyNeedsReply && !needsReply(a)) return false;
       if (cat && a.category !== cat) return false;
       if (!matchesStatus(a, st)) return false;
       if (q) {
@@ -369,9 +370,19 @@
     return `<span class="chip st-${esc(s)}"><span class="status-dot"></span>${esc(statusLabel(s))}</span>`;
   }
 
+  // Письмо «требует ответа»: последнее сообщение — от участника и не помечено «не требует ответа».
+  function needsReply(a) {
+    const msgs = Array.isArray(a.messages) ? a.messages : [];
+    if (!msgs.length) return false;
+    const last = msgs[msgs.length - 1];
+    if (last.direction !== "in") return false;
+    if (a.lastHandledMsgId && a.lastHandledMsgId === last.id) return false;
+    return true;
+  }
+
   function buildAppCardHtml(a) {
     const msgs = Array.isArray(a.messages) ? a.messages : [];
-    const incoming = msgs.filter((m) => m.direction === "in").length;
+    const nr = needsReply(a);
     const cardCats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
     const cardCatsHtml = cardCats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join("");
     return `
@@ -389,12 +400,33 @@
           ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено${a.paidAmount ? " · " + esc(a.paidAmount) + " ₽" : ""}</span>`
           : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`}
         ${a.status && a.status !== "new" && a.status !== "awaiting_payment" && a.status !== "paid" ? statusChip(a.status) : ""}
-        ${incoming ? `<span class="chip chip-reply">✉ ${incoming}</span>` : (msgs.length ? `<span class="chip">✉ ${msgs.length}</span>` : "")}
+        ${nr
+          ? `<span class="chip chip-reply">✉ требует ответа</span>`
+          : (msgs.length ? `<span class="chip chip-muted">✉ ${msgs.length}</span>` : "")}
+        ${a.feedbackGiven ? `<span class="chip chip-os">ОС ✓</span>` : ""}
       </div>`;
+  }
+
+  function updateInboxAlert() {
+    const banner = document.getElementById("inbox-alert");
+    if (!banner) return;
+    const count = (state.apps || []).filter(needsReply).length;
+    banner.classList.toggle("is-on", !!state.onlyNeedsReply);
+    if (state.onlyNeedsReply) {
+      banner.hidden = false;
+      banner.textContent = "Показаны письма, требующие ответа — сбросить фильтр";
+    } else if (count > 0) {
+      banner.hidden = false;
+      const word = count % 10 === 1 && count % 100 !== 11 ? "письмо требует" : "писем требуют";
+      banner.textContent = `${count} ${word} ответа — показать`;
+    } else {
+      banner.hidden = true;
+    }
   }
 
   function renderApps() {
     updateFilterCounts();
+    updateInboxAlert();
     const items = filteredApps();
     el.appsGrid.innerHTML = "";
     el.appsEmpty.hidden = items.length > 0;
@@ -440,13 +472,14 @@
           "Статус": statusLabel(dispStatus),
           "Оплачено": isPaid(a) ? "Да" : "Нет",
           "Сумма, ₽": Number(a.paidAmount) || "",
+          "ОС": a.feedbackGiven ? "Предоставлена" : "",
           "Видео": a.videoUrl || "",
           "Сообщений": msgs.length,
           "ID платежа": a.paymentId || "",
         };
       });
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 32, 11, 24].map((wch) => ({ wch }));
+      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 14, 32, 11, 24].map((wch) => ({ wch }));
       if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Заявки");
@@ -660,8 +693,16 @@
       <div class="d-section-title">Статус заявки</div>
       <p class="d-hint">Пометка для вас — на каком этапе заявка. Участник её не видит.</p>
       <div class="d-status-row">${statusBtns}</div>
+      <label class="d-os-toggle">
+        <input type="checkbox" id="fb-toggle" ${a.feedbackGiven ? "checked" : ""}>
+        <span>Обратная связь (ОС) предоставлена</span>
+      </label>
 
       <div class="d-section-title">Переписка</div>
+      ${needsReply(a) ? `<div class="reply-needed-row">
+        <span class="chip chip-reply">✉ требует ответа</span>
+        <button type="button" id="mark-handled" class="btn-link">Пометить: не требует ответа</button>
+      </div>` : ""}
       ${convoHtml}
 
       <div class="d-section-title">Ответить участнику на почту</div>
@@ -695,6 +736,42 @@
         }
       });
     });
+
+    // Переключатель «обратная связь предоставлена»
+    const fbToggle = document.getElementById("fb-toggle");
+    if (fbToggle) {
+      fbToggle.addEventListener("change", async () => {
+        try {
+          const res = await api(`/api/applications/${a.id}/feedback`, {
+            method: "POST", body: JSON.stringify({ given: fbToggle.checked }),
+          });
+          Object.assign(a, res.item);
+          renderApps();
+          toast(fbToggle.checked ? "ОС отмечена как предоставленная" : "Отметка ОС снята", "ok");
+        } catch (err) {
+          fbToggle.checked = !fbToggle.checked;
+          toast(`Не удалось сохранить: ${err.message}`, "err");
+        }
+      });
+    }
+
+    // Пометить «не требует ответа»
+    const markHandled = document.getElementById("mark-handled");
+    if (markHandled) {
+      markHandled.addEventListener("click", async () => {
+        markHandled.disabled = true;
+        try {
+          const res = await api(`/api/applications/${a.id}/handled`, { method: "POST", body: "{}" });
+          Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps();
+          toast("Помечено: не требует ответа", "ok");
+        } catch (err) {
+          markHandled.disabled = false;
+          toast(`Не удалось: ${err.message}`, "err");
+        }
+      });
+    }
 
     // Пикер шаблонов писем
     const tplSelect = document.getElementById("reply-template");
@@ -1019,6 +1096,8 @@
   el.statusFilter.addEventListener("change", renderApps);
   const exportBtn = document.getElementById("export-excel");
   if (exportBtn) exportBtn.addEventListener("click", () => exportToExcel(exportBtn));
+  const inboxAlert = document.getElementById("inbox-alert");
+  if (inboxAlert) inboxAlert.addEventListener("click", () => { state.onlyNeedsReply = !state.onlyNeedsReply; renderApps(); });
   el.chatsSearch.addEventListener("input", renderChats);
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);
