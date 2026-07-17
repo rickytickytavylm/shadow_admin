@@ -532,6 +532,7 @@ body[data-bg="stage"] .alert-btn:active { background: rgba(255, 255, 255, 0.08);
 
 /* Ответ на email */
 .reply-box { display: flex; flex-direction: column; gap: 10px; }
+.reply-box textarea.field { min-height: 220px; }
 .reply-box .btn { width: 100%; min-height: 48px; margin-top: 2px; }
 .reply-hint { font-size: 13px; color: var(--muted); margin: 0; }
 .reply-warn { font-size: 13px; color: var(--danger); margin: 0; }
