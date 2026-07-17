@@ -1097,7 +1097,11 @@
   const exportBtn = document.getElementById("export-excel");
   if (exportBtn) exportBtn.addEventListener("click", () => exportToExcel(exportBtn));
   const inboxAlert = document.getElementById("inbox-alert");
-  if (inboxAlert) inboxAlert.addEventListener("click", () => { state.onlyNeedsReply = !state.onlyNeedsReply; renderApps(); });
+  if (inboxAlert) inboxAlert.addEventListener("click", () => {
+    state.onlyNeedsReply = !state.onlyNeedsReply;
+    if (state.onlyNeedsReply) el.statusFilter.value = ""; // показать письма из всех статусов
+    renderApps();
+  });
   el.chatsSearch.addEventListener("input", renderChats);
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);
