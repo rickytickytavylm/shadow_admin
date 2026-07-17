@@ -527,7 +527,7 @@ body[data-bg="stage"] .alert-btn:active { background: rgba(255, 255, 255, 0.08);
   transition: all 0.15s ease;
 }
 .d-status-btn:hover { color: var(--ink); border-color: rgba(0, 0, 0, 0.2); }
-.d-status-btn.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.d-status-btn.is-active { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 
 /* Ответ на email */
 .reply-box { display: flex; flex-direction: column; gap: 10px; }
