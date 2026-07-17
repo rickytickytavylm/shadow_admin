@@ -247,6 +247,7 @@ select.field option { background: #fff; color: var(--ink); }
 .st-paid { color: var(--ok); border-color: rgba(52, 199, 89, 0.32); background: rgba(52, 199, 89, 0.13); }
 .st-new { color: #0060df; border-color: rgba(0, 113, 227, 0.28); background: rgba(0, 113, 227, 0.1); }
 .st-reviewing { color: #9a6a00; border-color: rgba(255, 179, 0, 0.32); background: rgba(255, 179, 0, 0.12); }
+.st-reserve { color: #6b4fd8; border-color: rgba(107, 79, 216, 0.32); background: rgba(107, 79, 216, 0.12); }
 .st-accepted { color: var(--ok); border-color: rgba(52, 199, 89, 0.32); background: rgba(52, 199, 89, 0.13); }
 .st-rejected { color: var(--danger); border-color: rgba(255, 59, 48, 0.3); background: rgba(255, 59, 48, 0.1); }
 

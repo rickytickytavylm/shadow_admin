@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260717a">
+  <link rel="stylesheet" href="styles.css?v=20260717b">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -52,11 +52,11 @@
         <select id="status-filter" class="field field--select" aria-label="Статус">
           <option value="">Все статусы</option>
           <option value="awaiting_payment">Не оплачено</option>
-          <option value="paid">Оплачено</option>
-          <option value="new">Новая</option>
-          <option value="reviewing">На рассмотрении</option>
+          <option value="paid" selected>Оплачено</option>
+          <option value="reserve">Резерв</option>
           <option value="accepted">Прошёл отбор</option>
           <option value="rejected">Отклонена</option>
+          <option value="reviewing">На рассмотрении</option>
         </select>
       </div>
       <div id="apps-grid" class="apps-grid"></div>
@@ -140,7 +140,7 @@
       });
     }
   </script>
-  <script src="config.js?v=20260717a"></script>
-  <script src="app.js?v=20260717a"></script>
+  <script src="config.js?v=20260717b"></script>
+  <script src="app.js?v=20260717b"></script>
 </body>
 </html>

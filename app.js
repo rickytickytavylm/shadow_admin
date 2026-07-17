@@ -19,12 +19,14 @@
   const STATUS_LABELS = {
     awaiting_payment: "Не оплачено",
     paid: "Оплачено",
-    new: "Новая",
-    reviewing: "На рассмотрении",
+    reserve: "Резерв",
     accepted: "Прошёл отбор",
     rejected: "Отклонена",
+    reviewing: "На рассмотрении",
+    new: "Новая", // legacy: старые заявки, кнопки не показываем
   };
-  const STATUS_ORDER = ["awaiting_payment", "paid", "new", "reviewing", "accepted", "rejected"];
+  // Статусы этапа 1 (порядок кнопок в карточке). «Новая» убрана из выбора.
+  const STATUS_ORDER = ["awaiting_payment", "paid", "reserve", "accepted", "rejected", "reviewing"];
 
   const el = {
     loginScreen: document.getElementById("login-screen"),
@@ -243,6 +245,29 @@
     return a.status === "paid" || Number(a.paidAmount) > 0;
   }
 
+  // Совпадает ли заявка с выбранным статусом (тот же предикат используется для счётчиков).
+  function matchesStatus(a, value) {
+    if (!value) return true;
+    if (value === "paid") return isPaid(a);
+    if (value === "awaiting_payment") return a.status === "awaiting_payment" && !isPaid(a);
+    return (a.status || "new") === value;
+  }
+
+  // Обновляет подписи фильтров: «Оплачено (12)» и т.п.
+  function updateFilterCounts() {
+    const apps = state.apps || [];
+    for (const opt of el.statusFilter.options) {
+      if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent;
+      const n = apps.filter((a) => matchesStatus(a, opt.value)).length;
+      opt.textContent = `${opt.dataset.base} (${n})`;
+    }
+    for (const opt of el.categoryFilter.options) {
+      if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent;
+      const n = opt.value ? apps.filter((a) => a.category === opt.value).length : apps.length;
+      opt.textContent = `${opt.dataset.base} (${n})`;
+    }
+  }
+
   // ── Рендер заявок ──
   function filteredApps() {
     const q = el.appsSearch.value.trim().toLowerCase();
@@ -250,13 +275,7 @@
     const st = el.statusFilter.value;
     return state.apps.filter((a) => {
       if (cat && a.category !== cat) return false;
-      if (st === "paid") {
-        if (!isPaid(a)) return false;
-      } else if (st === "awaiting_payment") {
-        if (!(a.status === "awaiting_payment" && !isPaid(a))) return false;
-      } else if (st && (a.status || "new") !== st) {
-        return false;
-      }
+      if (!matchesStatus(a, st)) return false;
       if (q) {
         const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -295,6 +314,7 @@
   }
 
   function renderApps() {
+    updateFilterCounts();
     const items = filteredApps();
     el.appsGrid.innerHTML = "";
     el.appsEmpty.hidden = items.length > 0;
