@@ -1,7 +1,7 @@
 /* Service worker для PWA «TENI · Админ».
    Приоритет — свежесть данных: код и страницы всегда тянем из сети,
    кэш используем только как офлайн-фолбэк. API (другой домен) не трогаем. */
-const CACHE = "teni-admin-v20";
+const CACHE = "teni-admin-v21";
 const CORE = [
   "./",
   "./index.html",

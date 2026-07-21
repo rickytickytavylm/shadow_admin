@@ -267,6 +267,7 @@ body[data-bg="stage"] .btn-export:hover { border-color: rgba(255, 255, 255, 0.22
 .sp-new { color: var(--accent); border-color: rgba(0, 113, 227, 0.28); background: rgba(0, 113, 227, 0.1); }
 .sp-handled { color: var(--ok); border-color: rgba(52, 199, 89, 0.32); background: rgba(52, 199, 89, 0.13); }
 .sp-archived { color: var(--faint); background: var(--surface-3); }
+.chip-promo { color: var(--gold); border-color: rgba(154, 118, 54, 0.32); background: rgba(154, 118, 54, 0.12); }
 
 /* Статусы (мягкие «пилюли» с цветной точкой) */
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }

@@ -422,6 +422,7 @@
           ? `<span class="chip chip-reply">✉ требует ответа</span>`
           : (msgs.length ? `<span class="chip chip-muted">✉ ${msgs.length}</span>` : "")}
         ${a.feedbackGiven ? `<span class="chip chip-os">ОС ✓</span>` : ""}
+        ${a.promoCode ? `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>` : ""}
       </div>`;
   }
 
@@ -490,6 +491,7 @@
           "Статус": statusLabel(dispStatus),
           "Оплачено": isPaid(a) ? "Да" : "Нет",
           "Сумма, ₽": Number(a.paidAmount) || "",
+          "Промокод": a.promoCode || "",
           "ОС": a.feedbackGiven ? "Предоставлена" : "",
           "Видео": a.videoUrl || "",
           "Сообщений": msgs.length,
@@ -497,7 +499,7 @@
         };
       });
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 14, 32, 11, 24].map((wch) => ({ wch }));
+      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 12, 14, 32, 11, 24].map((wch) => ({ wch }));
       if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Заявки");
@@ -777,7 +779,8 @@
         ${row("Статус", isPaid(a)
           ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено</span>`
           : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`)}
-        ${row("Сумма", a.paidAmount ? esc(a.paidAmount) + " ₽" : "—")}
+        ${row("Сумма", a.paidAmount ? esc(a.paidAmount) + " ₽" : (a.promoCode ? "0 ₽" : "—"))}
+        ${a.promoCode ? row("Промокод", `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>`) : ""}
         ${a.paymentId ? row("ID платежа", `<span class="mono">${esc(a.paymentId)}</span>`) : ""}
       </dl>
 
