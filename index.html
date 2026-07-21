@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260717f">
+  <link rel="stylesheet" href="styles.css?v=20260721a">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -77,6 +77,15 @@
       <p id="chats-empty" class="empty-state" hidden>Диалогов с ИИ пока нет.</p>
     </section>
 
+    <!-- СПОНСОРЫ -->
+    <section id="view-sponsors" class="view" hidden>
+      <div class="toolbar">
+        <input id="sponsors-search" class="field field--search" type="search" placeholder="Поиск: имя, бренд, email, текст…">
+      </div>
+      <div id="sponsors-list" class="chats-list"></div>
+      <p id="sponsors-empty" class="empty-state" hidden>Заявок на спонсорство пока нет.</p>
+    </section>
+
     <!-- Нижняя навигация -->
     <nav class="tabbar" aria-label="Навигация">
       <button class="tabbar-btn is-active" data-tab="apps" type="button">
@@ -92,6 +101,13 @@
           <span class="tabbar-badge" id="tab-chats-count">0</span>
         </span>
         <span>Чаты</span>
+      </button>
+      <button class="tabbar-btn" data-tab="sponsors" type="button">
+        <span class="tabbar-icon-wrap">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-4V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M9 7V5h6v2"/></svg>
+          <span class="tabbar-badge" id="tab-sponsors-count">0</span>
+        </span>
+        <span>Спонсоры</span>
       </button>
       <button class="tabbar-btn" id="tabbar-refresh" type="button">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-.5 4"/><path d="M20 4v6h-6"/></svg>
@@ -145,7 +161,7 @@
       });
     }
   </script>
-  <script src="config.js?v=20260717f"></script>
-  <script src="app.js?v=20260717f"></script>
+  <script src="config.js?v=20260721a"></script>
+  <script src="app.js?v=20260721a"></script>
 </body>
 </html>

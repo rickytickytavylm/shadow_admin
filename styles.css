@@ -264,6 +264,9 @@ body[data-bg="stage"] .btn-export:hover { border-color: rgba(255, 255, 255, 0.22
 .chip-reply { color: var(--ok); border-color: rgba(26, 127, 55, 0.3); background: rgba(52, 199, 89, 0.12); }
 .chip-muted { color: var(--faint); background: var(--surface-3); }
 .chip-os { color: var(--accent); border-color: rgba(0, 113, 227, 0.28); background: rgba(0, 113, 227, 0.1); }
+.sp-new { color: var(--accent); border-color: rgba(0, 113, 227, 0.28); background: rgba(0, 113, 227, 0.1); }
+.sp-handled { color: var(--ok); border-color: rgba(52, 199, 89, 0.32); background: rgba(52, 199, 89, 0.13); }
+.sp-archived { color: var(--faint); background: var(--surface-3); }
 
 /* Статусы (мягкие «пилюли» с цветной точкой) */
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -789,6 +792,7 @@ body[data-bg="stage"] .tabbar {
   font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
+  white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   transition: color 0.15s ease;
 }

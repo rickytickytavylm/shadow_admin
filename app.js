@@ -119,8 +119,13 @@
     tabbarRefresh: document.getElementById("tabbar-refresh"),
     tabAppsCount: document.getElementById("tab-apps-count"),
     tabChatsCount: document.getElementById("tab-chats-count"),
+    tabSponsorsCount: document.getElementById("tab-sponsors-count"),
     viewApps: document.getElementById("view-apps"),
     viewChats: document.getElementById("view-chats"),
+    viewSponsors: document.getElementById("view-sponsors"),
+    sponsorsList: document.getElementById("sponsors-list"),
+    sponsorsEmpty: document.getElementById("sponsors-empty"),
+    sponsorsSearch: document.getElementById("sponsors-search"),
     appsGrid: document.getElementById("apps-grid"),
     appsEmpty: document.getElementById("apps-empty"),
     appsSearch: document.getElementById("apps-search"),
@@ -142,9 +147,13 @@
     alertOk: document.getElementById("alert-ok"),
   };
 
+  const SPONSOR_STATUS_LABELS = { new: "Новая", handled: "Обработана", archived: "Архив" };
+  const SPONSOR_STATUS_ORDER = ["new", "handled", "archived"];
+
   const state = {
     apps: [],
     chats: [],
+    sponsors: [],
     emailEnabled: false,
     inboxEnabled: false,
     tab: "apps",
@@ -259,18 +268,22 @@
         await api("/api/applications/inbox/fetch", { method: "POST" }).catch(() => {});
       }
 
-      const [apps, chats] = await Promise.all([
+      const [apps, chats, sponsors] = await Promise.all([
         api("/api/applications?limit=1000"),
         api("/api/ai/chats?limit=500").catch(() => ({ items: [] })),
+        api("/api/sponsors?limit=1000").catch(() => ({ items: [] })),
       ]);
       state.apps = apps.items || [];
       state.emailEnabled = Boolean(apps.emailEnabled);
       state.inboxEnabled = Boolean(apps.inboxEnabled);
       state.chats = chats.items || [];
+      state.sponsors = sponsors.items || [];
       setBadge(el.tabAppsCount, state.apps.length);
       setBadge(el.tabChatsCount, state.chats.length);
+      setBadge(el.tabSponsorsCount, state.sponsors.filter((s) => (s.status || "new") === "new").length);
       renderApps();
       renderChats();
+      renderSponsors();
       refreshOpenDrawer({ preserveScroll: true });
     } catch (err) {
       if (err.message === "unauthorized") return;
@@ -306,6 +319,11 @@
     if (state.drawer.kind === "chat" && state.drawer.chatId) {
       const c = state.chats.find((x) => x.sessionId === state.drawer.chatId);
       if (c) openChatDrawer(c.sessionId, { preserveScroll });
+      return;
+    }
+    if (state.drawer.kind === "sponsor" && state.drawer.sponsorId) {
+      const s = state.sponsors.find((x) => x.id === state.drawer.sponsorId);
+      if (s) openSponsorDrawer(s.id, { preserveScroll });
     }
   }
 
@@ -529,6 +547,101 @@
       frag.appendChild(card);
     }
     el.chatsList.appendChild(frag);
+  }
+
+  // ── Рендер заявок спонсоров ──
+  function filteredSponsors() {
+    const q = el.sponsorsSearch.value.trim().toLowerCase();
+    const list = [...state.sponsors].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    if (!q) return list;
+    return list.filter((s) => `${s.name} ${s.brand} ${s.email} ${s.phone} ${s.message}`.toLowerCase().includes(q));
+  }
+
+  function renderSponsors() {
+    const items = filteredSponsors();
+    el.sponsorsList.innerHTML = "";
+    el.sponsorsEmpty.hidden = items.length > 0;
+    const frag = document.createDocumentFragment();
+    for (const s of items) {
+      const st = s.status || "new";
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "chat-card";
+      card.addEventListener("click", () => openSponsorDrawer(s.id));
+      card.innerHTML = `
+        <div class="chat-card-top">
+          <span class="chip sp-${esc(st)}">${esc(SPONSOR_STATUS_LABELS[st] || st)}</span>
+          <span class="chat-card-id">${esc(fmtDate(s.createdAt))}</span>
+        </div>
+        <div class="app-card-name">${esc(s.brand || s.name || "Без названия")}</div>
+        <div class="chat-card-preview">${esc(s.message || "—")}</div>
+        <div class="chat-card-meta">
+          <span>${esc(s.name || "—")}${s.email ? " · " + esc(s.email) : ""}</span>
+        </div>`;
+      frag.appendChild(card);
+    }
+    el.sponsorsList.appendChild(frag);
+  }
+
+  function openSponsorDrawer(id, { preserveScroll = false } = {}) {
+    const s = state.sponsors.find((x) => x.id === id);
+    if (!s) return;
+    state.drawer = { kind: "sponsor", appId: null, chatId: null, sponsorId: id };
+    const st = s.status || "new";
+    const statusBtns = SPONSOR_STATUS_ORDER.map((v) =>
+      `<button type="button" class="d-status-btn ${st === v ? "is-active" : ""}" data-sp-status="${v}">${esc(SPONSOR_STATUS_LABELS[v])}</button>`
+    ).join("");
+    const contact = [];
+    if (s.email) contact.push(`<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>`);
+
+    openDrawer(`
+      <span class="d-kicker">Заявка на спонсорство</span>
+      <h2 class="d-title">${esc(s.brand || s.name || "Без названия")}</h2>
+      <span class="chip sp-${esc(st)}">${esc(SPONSOR_STATUS_LABELS[st] || st)}</span>
+
+      <div class="d-section-title">Контакты</div>
+      <dl class="d-grid">
+        ${row("Дата", esc(fmtDate(s.createdAt)))}
+        ${row("Контактное лицо", esc(s.name || "—"))}
+        ${row("Бренд/компания", esc(s.brand || "—"))}
+        ${row("Email", contact.length ? contact.join("") : "—")}
+        ${row("Телефон", esc(s.phone || "—"))}
+      </dl>
+
+      <div class="d-section-title">Сообщение</div>
+      <div class="transcript"><div class="msg msg-bot">${esc(s.message || "—")}</div></div>
+
+      <div class="d-section-title">Статус</div>
+      <p class="d-hint">Пометка для вас — обработана ли заявка.</p>
+      <div class="d-status-row">${statusBtns}</div>
+
+      <details class="d-details">
+        <summary>Технические данные</summary>
+        <dl class="d-grid" style="margin-top: 12px">
+          ${row("IP", `<span class="mono">${esc(s.ip || "—")}</span>`)}
+          ${row("Устройство", `<span class="mono">${esc(s.userAgent || "—")}</span>`)}
+          ${row("ID заявки", `<span class="mono">${esc(s.id)}</span>`)}
+        </dl>
+      </details>
+    `, { preserveScroll });
+
+    el.drawerBody.querySelectorAll(".d-status-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const status = btn.dataset.spStatus;
+        try {
+          const res = await api(`/api/sponsors/${s.id}/status`, {
+            method: "POST", body: JSON.stringify({ status }),
+          });
+          Object.assign(s, res.item);
+          el.drawerBody.querySelectorAll(".d-status-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.spStatus === status));
+          setBadge(el.tabSponsorsCount, state.sponsors.filter((x) => (x.status || "new") === "new").length);
+          renderSponsors();
+          toast(`Статус: ${SPONSOR_STATUS_LABELS[status] || status}`, "ok");
+        } catch (err) {
+          toast(`Не удалось изменить статус: ${err.message}`, "err");
+        }
+      });
+    });
   }
 
   // ── Drawer ──
@@ -1041,6 +1154,7 @@
     el.tabbarBtns.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
+    el.viewSponsors.hidden = tab !== "sponsors";
   }
 
   // ── Экраны ──
@@ -1103,6 +1217,7 @@
     renderApps();
   });
   el.chatsSearch.addEventListener("input", renderChats);
+  if (el.sponsorsSearch) el.sponsorsSearch.addEventListener("input", renderSponsors);
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);
   el.alertCancel.addEventListener("click", () => closeAlert(false));
