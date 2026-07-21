@@ -278,7 +278,7 @@
       state.inboxEnabled = Boolean(apps.inboxEnabled);
       state.chats = chats.items || [];
       state.sponsors = sponsors.items || [];
-      setBadge(el.tabAppsCount, state.apps.length);
+      setBadge(el.tabAppsCount, state.apps.filter(isPaid).length);
       setBadge(el.tabChatsCount, state.chats.length);
       setBadge(el.tabSponsorsCount, state.sponsors.filter((s) => (s.status || "new") === "new").length);
       renderApps();
