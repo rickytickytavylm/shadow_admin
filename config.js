@@ -7,7 +7,7 @@
 //
 // Локально (localhost / 127.0.0.1) автоматически используется LOCAL_API_BASE.
 (() => {
-  const PROD_API_BASE = "https://web-production-0ab2f.up.railway.app";
+  const PROD_API_BASE = "https://api.xn----7sbocmxidei1bb9cwe.xn--p1ai";
   const LOCAL_API_BASE = "http://localhost:8090";
 
   const host = location.hostname;
