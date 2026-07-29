@@ -114,6 +114,7 @@
     tokenInput: document.getElementById("token-input"),
     loginError: document.getElementById("login-error"),
     app: document.getElementById("app"),
+    appLoading: document.getElementById("app-loading"),
     tabbarSettings: document.getElementById("tabbar-settings"),
     tabbarBtns: Array.from(document.querySelectorAll(".tabbar-btn[data-tab]")),
     tabbarRefresh: document.getElementById("tabbar-refresh"),
@@ -157,10 +158,15 @@
     emailEnabled: false,
     inboxEnabled: false,
     tab: "apps",
+    booted: false,
     drawer: { kind: null, appId: null, chatId: null },
   };
 
   let syncing = false;
+
+  function setLoading(on) {
+    if (el.appLoading) el.appLoading.hidden = !on;
+  }
 
   // ── Утилиты ──
   const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
@@ -263,6 +269,8 @@
   async function syncFreshData({ fetchInbox = false, silent = false } = {}) {
     if (!getToken() || el.app.hidden || syncing) return;
     syncing = true;
+    const firstLoad = !state.booted;
+    if (firstLoad) setLoading(true);
     try {
       if (fetchInbox) {
         await api("/api/applications/inbox/fetch", { method: "POST" }).catch(() => {});
@@ -290,6 +298,7 @@
       if (!silent) toast(`Ошибка загрузки: ${err.message}`, "err");
     } finally {
       syncing = false;
+      if (firstLoad) { state.booted = true; setLoading(false); }
     }
   }
 
@@ -1176,6 +1185,7 @@
   function showApp() {
     el.loginScreen.hidden = true;
     el.app.hidden = false;
+    state.booted = false;
     applyBg(currentBg());
     loadAll();
   }
