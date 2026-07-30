@@ -121,9 +121,14 @@
     tabAppsCount: document.getElementById("tab-apps-count"),
     tabChatsCount: document.getElementById("tab-chats-count"),
     tabSponsorsCount: document.getElementById("tab-sponsors-count"),
+    tabAnalyticsCount: document.getElementById("tab-analytics-count"),
     viewApps: document.getElementById("view-apps"),
     viewChats: document.getElementById("view-chats"),
     viewSponsors: document.getElementById("view-sponsors"),
+    viewAnalytics: document.getElementById("view-analytics"),
+    analyticsList: document.getElementById("analytics-list"),
+    analyticsEmpty: document.getElementById("analytics-empty"),
+    analyticsStats: document.getElementById("analytics-stats"),
     sponsorsList: document.getElementById("sponsors-list"),
     sponsorsEmpty: document.getElementById("sponsors-empty"),
     sponsorsSearch: document.getElementById("sponsors-search"),
@@ -155,6 +160,8 @@
     apps: [],
     chats: [],
     sponsors: [],
+    events: [],
+    analyticsStats: { total: 0, today: 0, last7: 0, last30: 0, uniqueDevices: 0 },
     emailEnabled: false,
     inboxEnabled: false,
     tab: "apps",
@@ -276,22 +283,27 @@
         await api("/api/applications/inbox/fetch", { method: "POST" }).catch(() => {});
       }
 
-      const [apps, chats, sponsors] = await Promise.all([
+      const [apps, chats, sponsors, analytics] = await Promise.all([
         api("/api/applications?limit=1000"),
         api("/api/ai/chats?limit=500").catch(() => ({ items: [] })),
         api("/api/sponsors?limit=1000").catch(() => ({ items: [] })),
+        api("/api/events?type=vinovnali_click&limit=1000").catch(() => ({ items: [], stats: null })),
       ]);
       state.apps = apps.items || [];
       state.emailEnabled = Boolean(apps.emailEnabled);
       state.inboxEnabled = Boolean(apps.inboxEnabled);
       state.chats = chats.items || [];
       state.sponsors = sponsors.items || [];
+      state.events = analytics.items || [];
+      if (analytics.stats) state.analyticsStats = analytics.stats;
       setBadge(el.tabAppsCount, state.apps.filter(isPaid).length);
       setBadge(el.tabChatsCount, state.chats.length);
       setBadge(el.tabSponsorsCount, state.sponsors.filter((s) => (s.status || "new") === "new").length);
+      setBadge(el.tabAnalyticsCount, state.analyticsStats.today || 0);
       renderApps();
       renderChats();
       renderSponsors();
+      renderAnalytics();
       refreshOpenDrawer({ preserveScroll: true });
     } catch (err) {
       if (err.message === "unauthorized") return;
@@ -592,6 +604,41 @@
       frag.appendChild(card);
     }
     el.sponsorsList.appendChild(frag);
+  }
+
+  // ── Рендер аналитики (клики по «Купить билет» спектакля) ──
+  function renderAnalytics() {
+    if (!el.analyticsList) return;
+    const s = state.analyticsStats || {};
+    if (el.analyticsStats) {
+      const box = (label, val) =>
+        `<div class="stat-box"><span class="stat-val">${Number(val) || 0}</span><span class="stat-label">${label}</span></div>`;
+      el.analyticsStats.innerHTML =
+        box("Всего", s.total) +
+        box("Сегодня", s.today) +
+        box("7 дней", s.last7) +
+        box("30 дней", s.last30) +
+        box("Устройств", s.uniqueDevices);
+    }
+    const items = state.events || [];
+    el.analyticsList.innerHTML = "";
+    el.analyticsEmpty.hidden = items.length > 0;
+    const frag = document.createDocumentFragment();
+    for (const e of items) {
+      const dev = e.deviceId ? esc(e.deviceId.slice(0, 12)) + "…" : "—";
+      const card = document.createElement("div");
+      card.className = "chat-card chat-card--static";
+      card.innerHTML = `
+        <div class="chat-card-top">
+          <span class="chip chip-os">Купить билет</span>
+          <span class="chat-card-id">${esc(fmtDate(e.createdAt))}</span>
+        </div>
+        <div class="chat-card-meta">
+          <span>device: ${dev}</span>
+        </div>`;
+      frag.appendChild(card);
+    }
+    el.analyticsList.appendChild(frag);
   }
 
   function openSponsorDrawer(id, { preserveScroll = false } = {}) {
@@ -1167,6 +1214,7 @@
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
     el.viewSponsors.hidden = tab !== "sponsors";
+    if (el.viewAnalytics) el.viewAnalytics.hidden = tab !== "analytics";
   }
 
   // ── Экраны ──

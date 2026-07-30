@@ -328,6 +328,28 @@ body[data-bg="stage"] .btn-export:hover { border-color: rgba(255, 255, 255, 0.22
 body[data-bg="stage"] .app-loading { color: rgba(255, 255, 255, 0.86); }
 body[data-bg="stage"] .app-spinner { border-color: rgba(255, 255, 255, 0.22); border-top-color: #fff; }
 
+/* ── Аналитика ── */
+.analytics-head { margin-bottom: 16px; }
+.section-kicker-sm { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); }
+.analytics-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin: 4px 0 14px; color: var(--ink); }
+.stat-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.stat-box {
+  flex: 1 1 auto;
+  min-width: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.stat-val { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+.stat-label { font-size: 12px; color: var(--muted); }
+.chat-card--static { cursor: default; }
+.chat-card--static:hover { transform: none; border-color: var(--line); box-shadow: var(--shadow-sm); }
+
 /* ── Drawer ── */
 .drawer-backdrop {
   position: fixed;
