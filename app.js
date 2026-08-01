@@ -399,27 +399,54 @@
     return (a.status || "new") === value;
   }
 
-  function telegramHref(raw) {
-    const v = String(raw || "").trim();
-    if (!v) return "";
-    if (/^https?:\/\//i.test(v)) return v.replace(/^https?:\/\/t\.me\//i, "https://telegram.me/");
-    const nick = v.replace(/^@/, "").replace(/^https?:\/\/(t\.me|telegram\.me)\//i, "");
-    if (!nick) return "";
-    return `https://telegram.me/${encodeURIComponent(nick)}`;
+  // Разбивает «@a, @b» / «a b» / ссылки на отдельные токены.
+  function splitSocialValues(raw) {
+    return String(raw || "")
+      .split(/[,;\n]+/)
+      .flatMap((part) => {
+        const t = part.trim();
+        if (!t) return [];
+        if (/^https?:\/\//i.test(t)) return [t];
+        return t.split(/\s+/).filter(Boolean);
+      });
   }
 
-  function instagramHref(raw) {
-    const v = String(raw || "").trim();
-    if (!v) return "";
-    if (/^https?:\/\//i.test(v)) return v;
-    const nick = v.replace(/^@/, "").replace(/^instagram\.com\//i, "");
-    if (!nick) return "";
-    return `https://www.instagram.com/${encodeURIComponent(nick)}/`;
+  function normalizeTelegram(token) {
+    const v = String(token || "").trim();
+    if (!v) return null;
+    const fromUrl = v.match(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\/@?([A-Za-z0-9_]{3,32})/i);
+    if (fromUrl) {
+      const nick = fromUrl[1];
+      return { href: `https://t.me/${nick}`, label: `@${nick}` };
+    }
+    const nick = v.replace(/^@/, "");
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(nick)) return null;
+    return { href: `https://t.me/${nick}`, label: `@${nick}` };
   }
 
-  function linkOrText(href, label) {
-    if (!href) return esc(label || "—");
-    return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+  function normalizeInstagram(token) {
+    const v = String(token || "").trim();
+    if (!v) return null;
+    const fromUrl = v.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([A-Za-z0-9._]{1,30})/i);
+    if (fromUrl) {
+      const nick = fromUrl[1].replace(/\/+$/, "");
+      return { href: `https://www.instagram.com/${nick}/`, label: `@${nick}` };
+    }
+    const nick = v.replace(/^@/, "").replace(/\/+$/, "");
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(nick)) return null;
+    return { href: `https://www.instagram.com/${nick}/`, label: `@${nick}` };
+  }
+
+  // Несколько юзернеймов → несколько кликабельных ссылок.
+  function socialLinksHtml(raw, kind) {
+    const tokens = splitSocialValues(raw);
+    const links = tokens
+      .map((t) => (kind === "tg" ? normalizeTelegram(t) : normalizeInstagram(t)))
+      .filter(Boolean);
+    if (!links.length) return esc(raw || "—");
+    return links
+      .map((l) => `<a href="${esc(l.href)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a>`)
+      .join(", ");
   }
 
   // Обновляет подписи фильтров: «Оплачено (12)» и т.п.
@@ -911,8 +938,6 @@
       : `<p class="reply-warn">Почта (SMTP) не настроена на сервере — отправка писем недоступна. Задайте переменные SMTP_* в настройках бэкенда.</p>`;
 
     const roleLabels = { student: "Ученик", teacher: "Педагог" };
-    const tgHref = telegramHref(a.telegram);
-    const igHref = instagramHref(a.instagram);
     const catChecks = Object.entries(CATEGORY_LABELS).map(([val, label]) =>
       `<label class="edit-cat-check"><input type="checkbox" value="${esc(val)}" ${cats.includes(val) ? "checked" : ""}> ${esc(label)}</label>`
     ).join("");
@@ -927,8 +952,8 @@
         ${row("Дата", esc(fmtDate(a.createdAt)))}
         ${row("Email", contact.length ? contact.join("") : "—")}
         ${row("Телефон", esc(a.phone || "—"))}
-        ${row("Telegram", a.telegram ? linkOrText(tgHref, a.telegram) : "—")}
-        ${row("Instagram", a.instagram ? linkOrText(igHref, a.instagram) : "—")}
+        ${row("Telegram", a.telegram ? socialLinksHtml(a.telegram, "tg") : "—")}
+        ${row("Instagram", a.instagram ? socialLinksHtml(a.instagram, "ig") : "—")}
         ${row("Город", esc(a.city || "—"))}
       </dl>
 
