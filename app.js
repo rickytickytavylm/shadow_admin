@@ -27,6 +27,9 @@
   };
   // Статусы этапа 1 (порядок кнопок в карточке). «Новая» убрана из выбора.
   const STATUS_ORDER = ["awaiting_payment", "paid", "reserve", "accepted", "rejected", "reviewing"];
+  const WORKFLOW_STATUSES = ["reserve", "accepted", "rejected", "reviewing"];
+  const PAYMENT_STATUSES = ["awaiting_payment", "paid"];
+  const DEFAULT_REPLY_SUBJECT = "Чемпионат «Тень»";
 
   // Готовые шаблоны писем. [Имя] подставляется автоматически, остальные [ссылки]/
   // [индивидуальная обратная связь] правятся вручную перед отправкой.
@@ -137,6 +140,9 @@
     appsSearch: document.getElementById("apps-search"),
     categoryFilter: document.getElementById("category-filter"),
     statusFilter: document.getElementById("status-filter"),
+    extraFilter: document.getElementById("extra-filter"),
+    appsSummaryStats: document.getElementById("apps-summary-stats"),
+    appsSummaryCats: document.getElementById("apps-summary-cats"),
     chatsList: document.getElementById("chats-list"),
     chatsEmpty: document.getElementById("chats-empty"),
     chatsSearch: document.getElementById("chats-search"),
@@ -296,7 +302,6 @@
       state.sponsors = sponsors.items || [];
       state.events = analytics.items || [];
       if (analytics.stats) state.analyticsStats = analytics.stats;
-      setBadge(el.tabAppsCount, state.apps.filter(isPaid).length);
       setBadge(el.tabChatsCount, state.chats.length);
       setBadge(el.tabSponsorsCount, state.sponsors.filter((s) => (s.status || "new") === "new").length);
       setBadge(el.tabAnalyticsCount, state.analyticsStats.today || 0);
@@ -364,25 +369,74 @@
     return a.status === "paid" || Number(a.paidAmount) > 0;
   }
 
+  function appCategories(a) {
+    if (Array.isArray(a.categories) && a.categories.length) return a.categories;
+    return a.category ? [a.category] : [];
+  }
+
+  function categoryStatus(a, cat) {
+    const map = a.categoryStatuses && typeof a.categoryStatuses === "object" ? a.categoryStatuses : {};
+    if (map[cat]) return map[cat];
+    // fallback: глобальный workflow / reviewing для оплаченных
+    if (WORKFLOW_STATUSES.includes(a.status)) return a.status;
+    return isPaid(a) ? "reviewing" : (a.status || "awaiting_payment");
+  }
+
+  function hasCategory(a, cat) {
+    return !cat || appCategories(a).includes(cat) || a.category === cat;
+  }
+
   // Совпадает ли заявка с выбранным статусом (тот же предикат используется для счётчиков).
   function matchesStatus(a, value) {
     if (!value) return true;
     if (value === "paid") return isPaid(a);
     if (value === "awaiting_payment") return a.status === "awaiting_payment" && !isPaid(a);
+    // workflow: совпадение по любой категории ИЛИ legacy global status
+    if (WORKFLOW_STATUSES.includes(value)) {
+      if ((a.status || "") === value) return true;
+      return appCategories(a).some((c) => categoryStatus(a, c) === value);
+    }
     return (a.status || "new") === value;
   }
 
+  function telegramHref(raw) {
+    const v = String(raw || "").trim();
+    if (!v) return "";
+    if (/^https?:\/\//i.test(v)) return v.replace(/^https?:\/\/t\.me\//i, "https://telegram.me/");
+    const nick = v.replace(/^@/, "").replace(/^https?:\/\/(t\.me|telegram\.me)\//i, "");
+    if (!nick) return "";
+    return `https://telegram.me/${encodeURIComponent(nick)}`;
+  }
+
+  function instagramHref(raw) {
+    const v = String(raw || "").trim();
+    if (!v) return "";
+    if (/^https?:\/\//i.test(v)) return v;
+    const nick = v.replace(/^@/, "").replace(/^instagram\.com\//i, "");
+    if (!nick) return "";
+    return `https://www.instagram.com/${encodeURIComponent(nick)}/`;
+  }
+
+  function linkOrText(href, label) {
+    if (!href) return esc(label || "—");
+    return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+  }
+
   // Обновляет подписи фильтров: «Оплачено (12)» и т.п.
+  // В категориях считаем ТОЛЬКО оплаченные (как просил заказчик).
   function updateFilterCounts() {
     const apps = state.apps || [];
+    const paid = apps.filter(isPaid);
     for (const opt of el.statusFilter.options) {
-      if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent;
+      if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent.replace(/\s*\(\d+\)$/, "");
       const n = apps.filter((a) => matchesStatus(a, opt.value)).length;
       opt.textContent = `${opt.dataset.base} (${n})`;
     }
     for (const opt of el.categoryFilter.options) {
-      if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent;
-      const n = opt.value ? apps.filter((a) => a.category === opt.value).length : apps.length;
+      if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent.replace(/\s*\(\d+\)$/, "");
+      const n = opt.value
+        ? paid.filter((a) => hasCategory(a, opt.value)).length
+        : paid.length;
       opt.textContent = `${opt.dataset.base} (${n})`;
     }
   }
@@ -392,10 +446,17 @@
     const q = el.appsSearch.value.trim().toLowerCase();
     const cat = el.categoryFilter.value;
     const st = el.statusFilter.value;
+    const extra = el.extraFilter ? el.extraFilter.value : "";
     return state.apps.filter((a) => {
       if (state.onlyNeedsReply && !needsReply(a)) return false;
-      if (cat && a.category !== cat) return false;
+      if (cat && !hasCategory(a, cat)) return false;
+      // В разрезе категории показываем только оплаченные (если выбран статус «все» или «оплачено»).
+      if (cat && (!st || st === "paid") && !isPaid(a)) return false;
       if (!matchesStatus(a, st)) return false;
+      if (extra === "needs_reply" && !needsReply(a)) return false;
+      if (extra === "has_messages" && !(Array.isArray(a.messages) && a.messages.length)) return false;
+      if (extra === "os_yes" && !a.feedbackGiven) return false;
+      if (extra === "os_no" && a.feedbackGiven) return false;
       if (q) {
         const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -422,8 +483,12 @@
   function buildAppCardHtml(a) {
     const msgs = Array.isArray(a.messages) ? a.messages : [];
     const nr = needsReply(a);
-    const cardCats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
-    const cardCatsHtml = cardCats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join("");
+    const cardCats = appCategories(a);
+    const cardCatsHtml = cardCats.map((c) => {
+      const st = categoryStatus(a, c);
+      const showSt = WORKFLOW_STATUSES.includes(st);
+      return `<span class="chip chip-cat">${esc(catLabel(c))}${showSt ? " · " + esc(statusLabel(st)) : ""}</span>`;
+    }).join("");
     return `
       <div class="app-card-top">
         <div>
@@ -438,7 +503,6 @@
         ${isPaid(a)
           ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачено${a.paidAmount ? " · " + esc(a.paidAmount) + " ₽" : ""}</span>`
           : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`}
-        ${a.status && a.status !== "new" && a.status !== "awaiting_payment" && a.status !== "paid" ? statusChip(a.status) : ""}
         ${nr
           ? `<span class="chip chip-reply">✉ требует ответа</span>`
           : (msgs.length ? `<span class="chip chip-muted">✉ ${msgs.length}</span>` : "")}
@@ -468,6 +532,8 @@
     updateFilterCounts();
     updateInboxAlert();
     const items = filteredApps();
+    // Бейдж = число заявок по текущему фильтру (динамически).
+    setBadge(el.tabAppsCount, items.length);
     el.appsGrid.innerHTML = "";
     el.appsEmpty.hidden = items.length > 0;
     const frag = document.createDocumentFragment();
@@ -606,13 +672,36 @@
     el.sponsorsList.appendChild(frag);
   }
 
-  // ── Рендер аналитики (клики по «Купить билет» спектакля) ──
+  // ── Рендер аналитики (сводка по заявкам + клики «Купить билет») ──
   function renderAnalytics() {
     if (!el.analyticsList) return;
+    const box = (label, val) =>
+      `<div class="stat-box"><span class="stat-val">${Number(val) || 0}</span><span class="stat-label">${label}</span></div>`;
+
+    // Сводка по оплаченным заявкам
+    const apps = state.apps || [];
+    const paid = apps.filter(isPaid);
+    const revenue = paid.reduce((sum, a) => sum + (Number(a.paidAmount) || 0), 0);
+    const promoCount = apps.filter((a) => a.promoCode).length;
+    const osYes = paid.filter((a) => a.feedbackGiven).length;
+    const osNo = paid.length - osYes;
+    if (el.appsSummaryStats) {
+      el.appsSummaryStats.innerHTML =
+        box("Оплачено", paid.length) +
+        box("Сумма, ₽", revenue) +
+        box("Промокоды", promoCount) +
+        box("ОС да", osYes) +
+        box("ОС нет", osNo);
+    }
+    if (el.appsSummaryCats) {
+      el.appsSummaryCats.innerHTML = Object.keys(CATEGORY_LABELS).map((key) => {
+        const n = paid.filter((a) => hasCategory(a, key)).length;
+        return box(CATEGORY_LABELS[key], n);
+      }).join("");
+    }
+
     const s = state.analyticsStats || {};
     if (el.analyticsStats) {
-      const box = (label, val) =>
-        `<div class="stat-box"><span class="stat-val">${Number(val) || 0}</span><span class="stat-label">${label}</span></div>`;
       el.analyticsStats.innerHTML =
         box("Всего", s.total) +
         box("Сегодня", s.today) +
@@ -781,13 +870,29 @@
         }).join("")}</div>`
       : `<p class="reply-hint">Переписки пока нет.</p>`;
 
-    const statusBtns = STATUS_ORDER.map((s) =>
-      `<button type="button" class="d-status-btn ${(a.status || "new") === s ? "is-active" : ""}" data-status="${s}">${esc(statusLabel(s))}</button>`
+    const payBtns = PAYMENT_STATUSES.map((s) =>
+      `<button type="button" class="d-status-btn ${(isPaid(a) ? "paid" : "awaiting_payment") === s ? "is-active" : ""}" data-status="${s}">${esc(statusLabel(s))}</button>`
     ).join("");
+
+    // Категории — массив или fallback на одну
+    const cats = appCategories(a);
+    const catsHtml = cats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join(" ");
+    const perCatStatusHtml = cats.map((c) => {
+      const cur = categoryStatus(a, c);
+      const btns = WORKFLOW_STATUSES.map((s) =>
+        `<button type="button" class="d-status-btn ${cur === s ? "is-active" : ""}" data-cat-status="${s}" data-category="${esc(c)}">${esc(statusLabel(s))}</button>`
+      ).join("");
+      return `<div class="cat-status-block">
+        <div class="cat-status-label">${esc(catLabel(c))}</div>
+        <div class="d-status-row">${btns}</div>
+      </div>`;
+    }).join("");
 
     const templateOptions = EMAIL_TEMPLATES
       .map((t) => `<option value="${t.id}">${esc(t.label)}</option>`)
       .join("");
+    // Предзаполняем тему: последняя тема переписки или дефолт.
+    const lastSubj = [...msgs].reverse().find((m) => m.subject)?.subject || DEFAULT_REPLY_SUBJECT;
     const replyBox = state.emailEnabled
       ? `<div class="reply-box">
           <p class="reply-hint">Письмо уйдёт на <b>${esc(a.email)}</b>. Участник сможет ответить прямо на него.</p>
@@ -795,31 +900,35 @@
             <option value="">📄 Вставить шаблон…</option>
             ${templateOptions}
           </select>
-          <input id="reply-subject" class="field" type="text" placeholder="Тема письма (необязательно)">
+          <div class="subject-row">
+            <input id="reply-subject" class="field" type="text" placeholder="Тема письма" value="${esc(lastSubj)}">
+            <button type="button" id="reply-subject-clear" class="subject-clear" aria-label="Очистить тему" title="Очистить тему">×</button>
+          </div>
           <textarea id="reply-message" class="field" placeholder="Текст письма участнику…"></textarea>
           <button id="reply-send" class="btn btn-accent" type="button">Отправить письмо</button>
           <p id="reply-status" class="reply-status"></p>
         </div>`
       : `<p class="reply-warn">Почта (SMTP) не настроена на сервере — отправка писем недоступна. Задайте переменные SMTP_* в настройках бэкенда.</p>`;
 
-    // Категории — массив или fallback на одну
-    const cats = Array.isArray(a.categories) && a.categories.length ? a.categories : (a.category ? [a.category] : []);
-    const catsHtml = cats.map((c) => `<span class="chip chip-cat">${esc(catLabel(c))}</span>`).join(" ");
-
     const roleLabels = { student: "Ученик", teacher: "Педагог" };
+    const tgHref = telegramHref(a.telegram);
+    const igHref = instagramHref(a.instagram);
+    const catChecks = Object.entries(CATEGORY_LABELS).map(([val, label]) =>
+      `<label class="edit-cat-check"><input type="checkbox" value="${esc(val)}" ${cats.includes(val) ? "checked" : ""}> ${esc(label)}</label>`
+    ).join("");
 
     openDrawer(`
       <span class="d-kicker">Заявка</span>
       <h2 class="d-title">${esc(a.fullName || "Без имени")}</h2>
-      ${statusChip(a.status)}
+      ${isPaid(a) ? statusChip("paid") : statusChip("awaiting_payment")}
 
       <div class="d-section-title">Контакты</div>
       <dl class="d-grid">
         ${row("Дата", esc(fmtDate(a.createdAt)))}
         ${row("Email", contact.length ? contact.join("") : "—")}
         ${row("Телефон", esc(a.phone || "—"))}
-        ${row("Telegram", esc(a.telegram || "—"))}
-        ${row("Instagram", esc(a.instagram || "—"))}
+        ${row("Telegram", a.telegram ? linkOrText(tgHref, a.telegram) : "—")}
+        ${row("Instagram", a.instagram ? linkOrText(igHref, a.instagram) : "—")}
         ${row("Город", esc(a.city || "—"))}
       </dl>
 
@@ -839,6 +948,8 @@
         ${a.promoCode ? row("Промокод", `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>`) : ""}
         ${a.paymentId ? row("ID платежа", `<span class="mono">${esc(a.paymentId)}</span>`) : ""}
       </dl>
+      <p class="d-hint">Оплата одна на заявку — даже если категорий несколько.</p>
+      <div class="d-status-row">${payBtns}</div>
 
       <div class="d-section-title">Категории</div>
       <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px">${catsHtml || "—"}</div>
@@ -862,9 +973,9 @@
         ${a.comment ? row("Комментарий", esc(a.comment)) : ""}
       </dl>
 
-      <div class="d-section-title">Статус заявки</div>
-      <p class="d-hint">Пометка для вас — на каком этапе заявка. Участник её не видит.</p>
-      <div class="d-status-row">${statusBtns}</div>
+      <div class="d-section-title">Статус по категориям</div>
+      <p class="d-hint">Можно принять в одной категории и отклонить в другой. Участник статусы не видит.</p>
+      ${perCatStatusHtml || "<p class='d-hint'>Категории не указаны.</p>"}
       <label class="d-os-toggle">
         <input type="checkbox" id="fb-toggle" ${a.feedbackGiven ? "checked" : ""}>
         <span>Обратная связь (ОС) предоставлена</span>
@@ -881,6 +992,18 @@
       ${replyBox}
 
       <details class="d-details">
+        <summary>Редактировать / удалить</summary>
+        <div style="margin-top:12px">
+          <p class="d-hint">Категории (отметьте нужные)</p>
+          <div class="edit-cats">${catChecks}</div>
+          <label class="d-hint" style="display:block;margin-top:10px">Видео (каждая ссылка с новой строки)</label>
+          <textarea id="edit-videos" class="field" rows="3">${esc(a.videoUrl || "")}</textarea>
+          <button id="edit-save" class="btn btn-ghost" type="button" style="margin-top:10px">Сохранить правки</button>
+          <button id="app-delete" class="btn btn-ghost" type="button" style="margin-top:10px;color:#c62828">Удалить заявку</button>
+        </div>
+      </details>
+
+      <details class="d-details">
         <summary>Технические данные</summary>
         <dl class="d-grid" style="margin-top: 12px">
           ${row("Device ID", `<span class="mono">${esc(a.deviceId || "—")}</span>`)}
@@ -891,8 +1014,8 @@
       </details>
     `, { preserveScroll });
 
-    // Статусы
-    el.drawerBody.querySelectorAll(".d-status-btn").forEach((btn) => {
+    // Оплата (глобально)
+    el.drawerBody.querySelectorAll(".d-status-btn[data-status]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const status = btn.dataset.status;
         try {
@@ -900,16 +1023,35 @@
             method: "POST", body: JSON.stringify({ status }),
           });
           Object.assign(a, res.item);
-          el.drawerBody.querySelectorAll(".d-status-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.status === status));
+          openAppDrawer(a.id, { preserveScroll: true });
           renderApps();
-          toast(`Статус изменён: ${statusLabel(status)}`, "ok");
+          toast(`Статус оплаты: ${statusLabel(status)}`, "ok");
         } catch (err) {
           toast(`Не удалось изменить статус: ${err.message}`, "err");
         }
       });
     });
 
-    // Переключатель «обратная связь предоставлена»
+    // Статус по категории
+    el.drawerBody.querySelectorAll(".d-status-btn[data-cat-status]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const status = btn.dataset.catStatus;
+        const category = btn.dataset.category;
+        try {
+          const res = await api(`/api/applications/${a.id}/category-status`, {
+            method: "POST", body: JSON.stringify({ category, status }),
+          });
+          Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps();
+          toast(`${catLabel(category)} → ${statusLabel(status)}`, "ok");
+        } catch (err) {
+          toast(`Не удалось: ${err.message}`, "err");
+        }
+      });
+    });
+
+    // Переключатель «обратная связь предоставлена» — при включении снимает «требует ответа»
     const fbToggle = document.getElementById("fb-toggle");
     if (fbToggle) {
       fbToggle.addEventListener("change", async () => {
@@ -918,12 +1060,63 @@
             method: "POST", body: JSON.stringify({ given: fbToggle.checked }),
           });
           Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
           renderApps();
-          toast(fbToggle.checked ? "ОС отмечена как предоставленная" : "Отметка ОС снята", "ok");
+          toast(fbToggle.checked ? "ОС отмечена, письмо больше не требует ответа" : "Отметка ОС снята", "ok");
         } catch (err) {
           fbToggle.checked = !fbToggle.checked;
           toast(`Не удалось сохранить: ${err.message}`, "err");
         }
+      });
+    }
+
+    // Редактирование категорий/видео
+    const editSave = document.getElementById("edit-save");
+    if (editSave) {
+      editSave.addEventListener("click", async () => {
+        const categories = [...el.drawerBody.querySelectorAll(".edit-cats input:checked")].map((x) => x.value);
+        const videoUrl = document.getElementById("edit-videos")?.value || "";
+        if (!categories.length) { toast("Выберите хотя бы одну категорию", "err"); return; }
+        try {
+          const res = await api(`/api/applications/${a.id}/edit`, {
+            method: "POST", body: JSON.stringify({ categories, videoUrl }),
+          });
+          Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps();
+          toast("Заявка обновлена", "ok");
+        } catch (err) {
+          toast(`Не удалось сохранить: ${err.message}`, "err");
+        }
+      });
+    }
+
+    const delBtn = document.getElementById("app-delete");
+    if (delBtn) {
+      delBtn.addEventListener("click", async () => {
+        const ok = await showConfirm({
+          title: "Удалить заявку?",
+          message: `«${a.fullName || "Без имени"}» будет удалена безвозвратно.`,
+        });
+        if (!ok) return;
+        try {
+          await api(`/api/applications/${a.id}`, { method: "DELETE" });
+          state.apps = state.apps.filter((x) => x.id !== a.id);
+          closeDrawer();
+          renderApps();
+          renderAnalytics();
+          toast("Заявка удалена", "ok");
+        } catch (err) {
+          toast(`Не удалось удалить: ${err.message}`, "err");
+        }
+      });
+    }
+
+    const subjClear = document.getElementById("reply-subject-clear");
+    if (subjClear) {
+      subjClear.addEventListener("click", () => {
+        const subjEl = document.getElementById("reply-subject");
+        if (subjEl) { subjEl.value = ""; subjEl.focus(); }
       });
     }
 
@@ -1269,6 +1462,7 @@
   el.appsSearch.addEventListener("input", renderApps);
   el.categoryFilter.addEventListener("change", renderApps);
   el.statusFilter.addEventListener("change", renderApps);
+  if (el.extraFilter) el.extraFilter.addEventListener("change", renderApps);
   const exportBtn = document.getElementById("export-excel");
   if (exportBtn) exportBtn.addEventListener("click", () => exportToExcel(exportBtn));
   const inboxAlert = document.getElementById("inbox-alert");

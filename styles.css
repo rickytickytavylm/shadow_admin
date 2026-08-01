@@ -350,6 +350,20 @@ body[data-bg="stage"] .app-spinner { border-color: rgba(255, 255, 255, 0.22); bo
 .chat-card--static { cursor: default; }
 .chat-card--static:hover { transform: none; border-color: var(--line); box-shadow: var(--shadow-sm); }
 
+.subject-row { position: relative; display: flex; align-items: center; gap: 0; }
+.subject-row .field { flex: 1; padding-right: 40px; }
+.subject-clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; border: 0; border-radius: 50%;
+  background: var(--surface-3); color: var(--muted); font-size: 18px; line-height: 1;
+  cursor: pointer;
+}
+.subject-clear:hover { background: var(--surface); color: var(--ink); }
+.cat-status-block { margin-bottom: 12px; }
+.cat-status-label { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.edit-cats { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.edit-cat-check { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+
 /* ── Drawer ── */
 .drawer-backdrop {
   position: fixed;

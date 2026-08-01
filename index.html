@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260730a">
+  <link rel="stylesheet" href="styles.css?v=20260801a">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -64,6 +64,13 @@
           <option value="rejected">Отклонена</option>
           <option value="reviewing">На рассмотрении</option>
         </select>
+        <select id="extra-filter" class="field field--select" aria-label="Доп. фильтр">
+          <option value="">Все письма</option>
+          <option value="needs_reply">Требуют ответа</option>
+          <option value="has_messages">Есть переписка</option>
+          <option value="os_yes">ОС предоставлена</option>
+          <option value="os_no">ОС не предоставлена</option>
+        </select>
         <button id="export-excel" class="btn-export" type="button" aria-label="Скачать заявки в Excel">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
           <span>Excel</span>
@@ -95,6 +102,12 @@
     <!-- АНАЛИТИКА -->
     <section id="view-analytics" class="view" hidden>
       <div class="analytics-head">
+        <span class="section-kicker-sm">Сводка по заявкам</span>
+        <h2 class="analytics-title">Оплаченные · категории · деньги</h2>
+        <div id="apps-summary-stats" class="stat-row"></div>
+        <div id="apps-summary-cats" class="stat-row" style="margin-top:10px"></div>
+      </div>
+      <div class="analytics-head" style="margin-top:28px">
         <span class="section-kicker-sm">Спектакль «Виновна ли?»</span>
         <h2 class="analytics-title">Клики по кнопке «Купить билет»</h2>
         <div id="analytics-stats" class="stat-row"></div>
@@ -181,7 +194,7 @@
       });
     }
   </script>
-  <script src="config.js?v=20260730a"></script>
-  <script src="app.js?v=20260730a"></script>
+  <script src="config.js?v=20260801a"></script>
+  <script src="app.js?v=20260801a"></script>
 </body>
 </html>
