@@ -363,6 +363,16 @@ body[data-bg="stage"] .app-spinner { border-color: rgba(255, 255, 255, 0.22); bo
 .cat-status-label { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
 .edit-cats { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .edit-cat-check { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.edit-history { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.edit-history-item {
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface-2); font-size: 13px; color: var(--ink);
+}
+.edit-history-at { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+.analytics-deleted summary {
+  cursor: pointer; font-weight: 600; font-size: 14px; color: var(--ink);
+  padding: 10px 0;
+}
 
 /* ── Drawer ── */
 .drawer-backdrop {

@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260801b">
+  <link rel="stylesheet" href="styles.css?v=20260807a">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -71,6 +71,9 @@
           <option value="os_yes">ОС предоставлена</option>
           <option value="os_no">ОС не предоставлена</option>
         </select>
+        <select id="promo-filter" class="field field--select" aria-label="Промокод">
+          <option value="">Все промо</option>
+        </select>
         <button id="export-excel" class="btn-export" type="button" aria-label="Скачать заявки в Excel">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
           <span>Excel</span>
@@ -106,6 +109,15 @@
         <h2 class="analytics-title">Оплаченные · категории · деньги</h2>
         <div id="apps-summary-stats" class="stat-row"></div>
         <div id="apps-summary-cats" class="stat-row" style="margin-top:10px"></div>
+        <h2 class="analytics-title" style="margin-top:18px;font-size:17px">Прошёл отбор (по категориям)</h2>
+        <div id="apps-summary-accepted" class="stat-row"></div>
+        <h2 class="analytics-title" style="margin-top:18px;font-size:17px">Разбивка по суммам оплаты</h2>
+        <div id="apps-summary-prices" class="stat-row"></div>
+        <details class="analytics-deleted" id="deleted-archive-wrap" style="margin-top:18px">
+          <summary>Архив удалённых оплаченных заявок</summary>
+          <div id="deleted-archive-list" class="chats-list" style="margin-top:12px"></div>
+          <p id="deleted-archive-empty" class="empty-state" hidden>Удалённых оплаченных заявок нет.</p>
+        </details>
       </div>
       <div class="analytics-head" style="margin-top:28px">
         <span class="section-kicker-sm">Спектакль «Виновна ли?»</span>
@@ -194,7 +206,7 @@
       });
     }
   </script>
-  <script src="config.js?v=20260801b"></script>
-  <script src="app.js?v=20260801b"></script>
+  <script src="config.js?v=20260807a"></script>
+  <script src="app.js?v=20260807a"></script>
 </body>
 </html>
