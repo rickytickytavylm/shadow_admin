@@ -491,11 +491,19 @@
     for (const opt of el.statusFilter.options) {
       if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent.replace(/\s*\(\d+\)$/, "");
       // Счётчик статуса в разрезе выбранной категории
-      const n = apps.filter((a) => {
-        if (cat && !hasCategory(a, cat)) return false;
-        if (cat && (!opt.value || opt.value === "paid") && !isPaid(a) && opt.value !== "awaiting_payment") return false;
-        return matchesStatus(a, opt.value, cat);
-      }).length;
+      let n;
+      if (!cat && WORKFLOW_STATUSES.includes(opt.value)) {
+        // Общий workflow-счётчик — это количество категорий, а не карточек.
+        // Одна заявка, прошедшая в двух категориях, должна дать +2.
+        n = apps.reduce((total, a) => total + appCategories(a)
+          .filter((c) => categoryStatus(a, c) === opt.value).length, 0);
+      } else {
+        n = apps.filter((a) => {
+          if (cat && !hasCategory(a, cat)) return false;
+          if (cat && (!opt.value || opt.value === "paid") && !isPaid(a) && opt.value !== "awaiting_payment") return false;
+          return matchesStatus(a, opt.value, cat);
+        }).length;
+      }
       opt.textContent = `${opt.dataset.base} (${n})`;
     }
     for (const opt of el.categoryFilter.options) {
