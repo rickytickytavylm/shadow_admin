@@ -544,7 +544,7 @@
       if (!matchesStatus(a, st, cat)) return false;
       if (promo && (a.promoCode || "").toUpperCase() !== promo) return false;
       if (extra === "needs_reply" && !needsReply(a)) return false;
-      if (extra === "has_messages" && !(Array.isArray(a.messages) && a.messages.length)) return false;
+      if (extra === "has_messages" && !hasRealCorrespondence(a)) return false;
       if (extra === "os_yes" && !a.feedbackGiven) return false;
       if (extra === "os_no" && a.feedbackGiven) return false;
       if (q) {
@@ -568,6 +568,13 @@
     if (last.direction !== "in") return false;
     if (a.lastHandledMsgId && a.lastHandledMsgId === last.id) return false;
     return true;
+  }
+
+  // Настоящая переписка: автописьмо «Заявка принята» не считается.
+  // Фильтр «Есть переписка» — со второго сообщения (ответ участника или наш ответ).
+  function hasRealCorrespondence(a) {
+    const msgs = Array.isArray(a.messages) ? a.messages : [];
+    return msgs.length >= 2;
   }
 
   function buildAppCardHtml(a) {
@@ -595,7 +602,7 @@
           : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`}
         ${nr
           ? `<span class="chip chip-reply">✉ требует ответа</span>`
-          : (msgs.length ? `<span class="chip chip-muted">✉ ${msgs.length}</span>` : "")}
+          : (hasRealCorrespondence(a) ? `<span class="chip chip-muted">✉ ${msgs.length}</span>` : "")}
         ${a.feedbackGiven ? `<span class="chip chip-os">ОС ✓</span>` : ""}
         ${a.promoCode ? `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>` : ""}
       </div>`;
@@ -1125,10 +1132,12 @@
       </label>
 
       <div class="d-section-title">Переписка</div>
-      ${needsReply(a) ? `<div class="reply-needed-row">
-        <span class="chip chip-reply">✉ требует ответа</span>
+      <div class="reply-needed-row">
+        ${needsReply(a)
+          ? `<span class="chip chip-reply">✉ требует ответа</span>`
+          : `<span class="chip chip-muted">✉ не требует ответа</span>`}
         <button type="button" id="mark-handled" class="btn-link">Пометить: не требует ответа</button>
-      </div>` : ""}
+      </div>
       ${convoHtml}
 
       <div class="d-section-title">Ответить участнику на почту</div>
