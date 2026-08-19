@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260807a">
+  <link rel="stylesheet" href="styles.css?v=20260819a">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -102,6 +102,25 @@
       <p id="sponsors-empty" class="empty-state" hidden>Заявок на спонсорство пока нет.</p>
     </section>
 
+    <!-- ЗРИТЕЛИ -->
+    <section id="view-tickets" class="view" hidden>
+      <div class="toolbar">
+        <input id="tickets-search" class="field field--search" type="search" placeholder="Поиск: имя, телефон, почта, номер заказа…">
+        <select id="tickets-status-filter" class="field field--select" aria-label="Статус">
+          <option value="paid" selected>Оплачено</option>
+          <option value="awaiting_payment">Не оплачено</option>
+          <option value="">Все</option>
+        </select>
+        <button id="export-tickets" class="btn-export" type="button" aria-label="Скачать список зрителей">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+          <span>Excel</span>
+        </button>
+      </div>
+      <div id="tickets-stats" class="stat-row" style="margin: 4px 16px 12px"></div>
+      <div id="tickets-list" class="chats-list"></div>
+      <p id="tickets-empty" class="empty-state" hidden>Оплаченных зрителей пока нет.</p>
+    </section>
+
     <!-- АНАЛИТИКА -->
     <section id="view-analytics" class="view" hidden>
       <div class="analytics-head">
@@ -150,6 +169,13 @@
           <span class="tabbar-badge" id="tab-sponsors-count">0</span>
         </span>
         <span>Спонсоры</span>
+      </button>
+      <button class="tabbar-btn" data-tab="tickets" type="button">
+        <span class="tabbar-icon-wrap">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7a2 2 0 0 1 2-2z"/><path d="M15 7v10"/></svg>
+          <span class="tabbar-badge" id="tab-tickets-count">0</span>
+        </span>
+        <span>Зрители</span>
       </button>
       <button class="tabbar-btn" data-tab="analytics" type="button">
         <span class="tabbar-icon-wrap">
@@ -206,7 +232,7 @@
       });
     }
   </script>
-  <script src="config.js?v=20260817a"></script>
-  <script src="app.js?v=20260817a"></script>
+  <script src="config.js?v=20260819a"></script>
+  <script src="app.js?v=20260819a"></script>
 </body>
 </html>

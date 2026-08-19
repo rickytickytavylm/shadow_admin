@@ -124,11 +124,18 @@
     tabAppsCount: document.getElementById("tab-apps-count"),
     tabChatsCount: document.getElementById("tab-chats-count"),
     tabSponsorsCount: document.getElementById("tab-sponsors-count"),
+    tabTicketsCount: document.getElementById("tab-tickets-count"),
     tabAnalyticsCount: document.getElementById("tab-analytics-count"),
     viewApps: document.getElementById("view-apps"),
     viewChats: document.getElementById("view-chats"),
     viewSponsors: document.getElementById("view-sponsors"),
+    viewTickets: document.getElementById("view-tickets"),
     viewAnalytics: document.getElementById("view-analytics"),
+    ticketsList: document.getElementById("tickets-list"),
+    ticketsEmpty: document.getElementById("tickets-empty"),
+    ticketsSearch: document.getElementById("tickets-search"),
+    ticketsStatusFilter: document.getElementById("tickets-status-filter"),
+    ticketsStats: document.getElementById("tickets-stats"),
     analyticsList: document.getElementById("analytics-list"),
     analyticsEmpty: document.getElementById("analytics-empty"),
     analyticsStats: document.getElementById("analytics-stats"),
@@ -171,6 +178,7 @@
     apps: [],
     chats: [],
     sponsors: [],
+    tickets: [],
     events: [],
     deletedApps: [],
     analyticsStats: { total: 0, today: 0, last7: 0, last30: 0, uniqueDevices: 0 },
@@ -314,10 +322,11 @@
         await api("/api/applications/inbox/fetch", { method: "POST" }).catch(() => {});
       }
 
-      const [apps, chats, sponsors, analytics, deleted] = await Promise.all([
+      const [apps, chats, sponsors, tickets, analytics, deleted] = await Promise.all([
         api("/api/applications?limit=1000"),
         api("/api/ai/chats?limit=500").catch(() => ({ items: [] })),
         api("/api/sponsors?limit=1000").catch(() => ({ items: [] })),
+        api("/api/tickets?limit=2000").catch(() => ({ items: [] })),
         api("/api/events?type=vinovnali_click&limit=1000").catch(() => ({ items: [], stats: null })),
         api("/api/applications/deleted/list?limit=300").catch(() => ({ items: [] })),
       ]);
@@ -326,16 +335,19 @@
       state.inboxEnabled = Boolean(apps.inboxEnabled);
       state.chats = chats.items || [];
       state.sponsors = sponsors.items || [];
+      state.tickets = tickets.items || [];
       state.events = analytics.items || [];
       state.deletedApps = deleted.items || [];
       if (analytics.stats) state.analyticsStats = analytics.stats;
       fillPromoFilter();
       setBadge(el.tabChatsCount, state.chats.length);
       setBadge(el.tabSponsorsCount, state.sponsors.filter((s) => (s.status || "new") === "new").length);
+      setBadge(el.tabTicketsCount, state.tickets.filter((t) => t.status === "paid").reduce((n, t) => n + (Number(t.quantity) || 1), 0));
       setBadge(el.tabAnalyticsCount, state.analyticsStats.today || 0);
       renderApps();
       renderChats();
       renderSponsors();
+      renderTickets();
       renderAnalytics();
       refreshOpenDrawer({ preserveScroll: true });
     } catch (err) {
@@ -378,6 +390,11 @@
     if (state.drawer.kind === "sponsor" && state.drawer.sponsorId) {
       const s = state.sponsors.find((x) => x.id === state.drawer.sponsorId);
       if (s) openSponsorDrawer(s.id, { preserveScroll });
+      return;
+    }
+    if (state.drawer.kind === "ticket" && state.drawer.ticketId) {
+      const t = state.tickets.find((x) => x.id === state.drawer.ticketId);
+      if (t) openTicketDrawer(t.id, { preserveScroll });
     }
   }
 
@@ -767,6 +784,131 @@
       frag.appendChild(card);
     }
     el.sponsorsList.appendChild(frag);
+  }
+
+  function filteredTickets() {
+    const q = (el.ticketsSearch?.value || "").trim().toLowerCase();
+    const st = el.ticketsStatusFilter ? el.ticketsStatusFilter.value : "paid";
+    return [...(state.tickets || [])]
+      .filter((t) => !st || t.status === st)
+      .filter((t) => {
+        if (!q) return true;
+        return `${t.fullName} ${t.email} ${t.phone} ${t.orderNumber} ${t.promoCode}`.toLowerCase().includes(q);
+      })
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  function renderTickets() {
+    if (!el.ticketsList) return;
+    const paid = (state.tickets || []).filter((t) => t.status === "paid");
+    const seats = paid.reduce((n, t) => n + (Number(t.quantity) || 1), 0);
+    const revenue = paid.reduce((n, t) => n + (Number(t.paidAmount) || 0), 0);
+    const unpaid = (state.tickets || []).filter((t) => t.status === "awaiting_payment").length;
+    const box = (label, val) =>
+      `<div class="stat-box"><span class="stat-val">${val}</span><span class="stat-label">${label}</span></div>`;
+    if (el.ticketsStats) {
+      el.ticketsStats.innerHTML =
+        box("Оплачено заказов", paid.length) +
+        box("Билетов", seats) +
+        box("Сумма, ₽", revenue.toLocaleString("ru-RU")) +
+        box("Не оплачено", unpaid);
+    }
+    const items = filteredTickets();
+    el.ticketsList.innerHTML = "";
+    if (el.ticketsEmpty) {
+      el.ticketsEmpty.hidden = items.length > 0;
+      el.ticketsEmpty.textContent = "По этому фильтру зрителей нет.";
+    }
+    const frag = document.createDocumentFragment();
+    for (const t of items) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "chat-card";
+      card.addEventListener("click", () => openTicketDrawer(t.id));
+      const qty = Number(t.quantity) || 1;
+      card.innerHTML = `
+        <div class="chat-card-top">
+          <span class="chip st-${esc(t.status || "")}">${esc(statusLabel(t.status))}</span>
+          <span class="chat-card-id">${esc(t.orderNumber || fmtDate(t.createdAt))}</span>
+        </div>
+        <div class="app-card-name">${esc(t.fullName || "—")}</div>
+        <div class="chat-card-preview">${qty} ${qty === 1 ? "билет" : "билета"} · ${esc((Number(t.paidAmount) || 0).toLocaleString("ru-RU"))} ₽${t.promoCode ? " · " + esc(t.promoCode) : ""}</div>
+        <div class="chat-card-meta">
+          <span>${esc(t.phone || "—")}${t.email ? " · " + esc(t.email) : ""}</span>
+        </div>`;
+      frag.appendChild(card);
+    }
+    el.ticketsList.appendChild(frag);
+  }
+
+  function openTicketDrawer(id, { preserveScroll = false } = {}) {
+    const t = state.tickets.find((x) => x.id === id);
+    if (!t) return;
+    state.drawer = { kind: "ticket", ticketId: id };
+    openDrawer(`
+      <span class="d-kicker">Зрительский билет</span>
+      <h2 class="d-title">${esc(t.fullName || "—")}</h2>
+      <span class="chip st-${esc(t.status || "")}">${esc(statusLabel(t.status))}</span>
+
+      <div class="d-section-title">Заказ</div>
+      <dl class="d-grid">
+        ${row("Номер", esc(t.orderNumber || "—"))}
+        ${row("Дата", esc(fmtDate(t.createdAt)))}
+        ${row("Билетов", esc(String(t.quantity || 1)))}
+        ${row("Цена за шт.", esc((Number(t.unitPrice) || 0).toLocaleString("ru-RU") + " ₽"))}
+        ${row("Сумма", esc((Number(t.paidAmount) || 0).toLocaleString("ru-RU") + " ₽"))}
+        ${row("Промокод", esc(t.promoCode || "—"))}
+        ${row("Письмо", t.emailSent ? "Отправлено" : "Ещё нет")}
+      </dl>
+
+      <div class="d-section-title">Контакты</div>
+      <dl class="d-grid">
+        ${row("Email", t.email ? `<a href="mailto:${esc(t.email)}">${esc(t.email)}</a>` : "—")}
+        ${row("Телефон", t.phone ? `<a href="tel:${esc(t.phone)}">${esc(t.phone)}</a>` : "—")}
+      </dl>
+
+      <details class="d-details">
+        <summary>Технические данные</summary>
+        <dl class="d-grid" style="margin-top: 12px">
+          ${row("ID платежа", `<span class="mono">${esc(t.paymentId || "—")}</span>`)}
+          ${row("IP", `<span class="mono">${esc(t.ip || "—")}</span>`)}
+          ${row("ID заказа", `<span class="mono">${esc(t.id)}</span>`)}
+        </dl>
+      </details>
+    `, { preserveScroll });
+  }
+
+  async function exportTicketsExcel(btn) {
+    const items = filteredTickets();
+    if (!items.length) { toast("Нет зрителей для экспорта", "err"); return; }
+    const label = btn ? btn.querySelector("span") : null;
+    const prev = label ? label.textContent : "";
+    if (btn) { btn.disabled = true; if (label) label.textContent = "Готовим…"; }
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      const rows = items.map((t) => ({
+        "Дата": fmtDate(t.createdAt),
+        "Номер заказа": t.orderNumber || "",
+        "ФИО": t.fullName || "",
+        "Телефон": t.phone || "",
+        "Email": t.email || "",
+        "Билетов": Number(t.quantity) || 1,
+        "Сумма, ₽": Number(t.paidAmount) || 0,
+        "Промокод": t.promoCode || "",
+        "Статус": statusLabel(t.status),
+        "Письмо": t.emailSent ? "Да" : "Нет",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [17, 14, 26, 16, 26, 10, 12, 12, 14, 10].map((wch) => ({ wch }));
+      if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Зрители");
+      XLSX.writeFile(wb, "teni-zriteli.xlsx");
+    } catch (err) {
+      toast(`Не удалось выгрузить: ${err.message}`, "err");
+    } finally {
+      if (btn) { btn.disabled = false; if (label) label.textContent = prev; }
+    }
   }
 
   // ── Рендер аналитики (сводка по заявкам + клики «Купить билет») ──
@@ -1579,6 +1721,7 @@
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
     el.viewSponsors.hidden = tab !== "sponsors";
+    if (el.viewTickets) el.viewTickets.hidden = tab !== "tickets";
     if (el.viewAnalytics) el.viewAnalytics.hidden = tab !== "analytics";
   }
 
@@ -1646,6 +1789,10 @@
   });
   el.chatsSearch.addEventListener("input", renderChats);
   if (el.sponsorsSearch) el.sponsorsSearch.addEventListener("input", renderSponsors);
+  if (el.ticketsSearch) el.ticketsSearch.addEventListener("input", renderTickets);
+  if (el.ticketsStatusFilter) el.ticketsStatusFilter.addEventListener("change", renderTickets);
+  const exportTicketsBtn = document.getElementById("export-tickets");
+  if (exportTicketsBtn) exportTicketsBtn.addEventListener("click", () => exportTicketsExcel(exportTicketsBtn));
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);
   el.alertCancel.addEventListener("click", () => closeAlert(false));

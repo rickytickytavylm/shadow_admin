@@ -896,6 +896,6 @@ body[data-bg="stage"] .tabbar {
 .is-spinning svg { animation: teni-spin 0.7s linear infinite; }
 
 @media (min-width: 761px) {
-  .tabbar { max-width: 560px; left: 50%; transform: translateX(-50%); border-radius: 18px 18px 0 0; }
+  .tabbar { max-width: 640px; left: 50%; transform: translateX(-50%); border-radius: 18px 18px 0 0; }
   .tabbar-btn { font-size: 11px; }
 }
