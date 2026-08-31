@@ -839,11 +839,12 @@ body[data-bg="stage"] .field--search {
   right: 0;
   bottom: 0;
   z-index: 40;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.92);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border-top: 1px solid var(--line);
+  overflow-x: auto;
 }
 body[data-bg="stage"] .tabbar {
   background: rgba(28, 28, 30, 0.94);
@@ -856,7 +857,8 @@ body[data-bg="stage"] .tabbar {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 8px 4px;
+  padding: 8px 2px;
+  font-size: 10px;
   border: 0;
   background: transparent;
   color: var(--faint);

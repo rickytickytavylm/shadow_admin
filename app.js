@@ -125,12 +125,18 @@
     tabChatsCount: document.getElementById("tab-chats-count"),
     tabSponsorsCount: document.getElementById("tab-sponsors-count"),
     tabTicketsCount: document.getElementById("tab-tickets-count"),
+    tabShowCount: document.getElementById("tab-show-count"),
     tabAnalyticsCount: document.getElementById("tab-analytics-count"),
     viewApps: document.getElementById("view-apps"),
     viewChats: document.getElementById("view-chats"),
     viewSponsors: document.getElementById("view-sponsors"),
     viewTickets: document.getElementById("view-tickets"),
+    viewShow: document.getElementById("view-show"),
     viewAnalytics: document.getElementById("view-analytics"),
+    showList: document.getElementById("show-list"),
+    showEmpty: document.getElementById("show-empty"),
+    showSearch: document.getElementById("show-search"),
+    showKindFilter: document.getElementById("show-kind-filter"),
     ticketsList: document.getElementById("tickets-list"),
     ticketsEmpty: document.getElementById("tickets-empty"),
     ticketsSearch: document.getElementById("tickets-search"),
@@ -171,6 +177,13 @@
     alertOk: document.getElementById("alert-ok"),
   };
 
+  const SHOW_KIND_LABELS = {
+    collaboration: "Коллаборация",
+    coproduction: "Сопродюсирование",
+    contact: "Связаться",
+    support: "Поддержка",
+    vip: "VIP-ложа",
+  };
   const SPONSOR_STATUS_LABELS = { new: "Новая", handled: "Обработана", archived: "Архив" };
   const SPONSOR_STATUS_ORDER = ["new", "handled", "archived"];
 
@@ -179,6 +192,7 @@
     chats: [],
     sponsors: [],
     tickets: [],
+    showLeads: [],
     events: [],
     deletedApps: [],
     analyticsStats: { total: 0, today: 0, last7: 0, last30: 0, uniqueDevices: 0 },
@@ -322,11 +336,12 @@
         await api("/api/applications/inbox/fetch", { method: "POST" }).catch(() => {});
       }
 
-      const [apps, chats, sponsors, tickets, analytics, deleted] = await Promise.all([
+      const [apps, chats, sponsors, tickets, showLeads, analytics, deleted] = await Promise.all([
         api("/api/applications?limit=1000"),
         api("/api/ai/chats?limit=500").catch(() => ({ items: [] })),
         api("/api/sponsors?limit=1000").catch(() => ({ items: [] })),
         api("/api/tickets?limit=2000").catch(() => ({ items: [] })),
+        api("/api/show-leads?limit=1000").catch(() => ({ items: [] })),
         api("/api/events?type=vinovnali_click&limit=1000").catch(() => ({ items: [], stats: null })),
         api("/api/applications/deleted/list?limit=300").catch(() => ({ items: [] })),
       ]);
@@ -336,6 +351,7 @@
       state.chats = chats.items || [];
       state.sponsors = sponsors.items || [];
       state.tickets = tickets.items || [];
+      state.showLeads = showLeads.items || [];
       state.events = analytics.items || [];
       state.deletedApps = deleted.items || [];
       if (analytics.stats) state.analyticsStats = analytics.stats;
@@ -343,11 +359,13 @@
       setBadge(el.tabChatsCount, state.chats.length);
       setBadge(el.tabSponsorsCount, state.sponsors.filter((s) => (s.status || "new") === "new").length);
       setBadge(el.tabTicketsCount, state.tickets.filter((t) => t.status === "paid").reduce((n, t) => n + (Number(t.quantity) || 1), 0));
+      setBadge(el.tabShowCount, state.showLeads.filter((s) => (s.status || "new") === "new").length);
       setBadge(el.tabAnalyticsCount, state.analyticsStats.today || 0);
       renderApps();
       renderChats();
       renderSponsors();
       renderTickets();
+      renderShowLeads();
       renderAnalytics();
       refreshOpenDrawer({ preserveScroll: true });
     } catch (err) {
@@ -395,6 +413,11 @@
     if (state.drawer.kind === "ticket" && state.drawer.ticketId) {
       const t = state.tickets.find((x) => x.id === state.drawer.ticketId);
       if (t) openTicketDrawer(t.id, { preserveScroll });
+      return;
+    }
+    if (state.drawer.kind === "show" && state.drawer.showId) {
+      const s = state.showLeads.find((x) => x.id === state.drawer.showId);
+      if (s) openShowDrawer(s.id, { preserveScroll });
     }
   }
 
@@ -784,6 +807,94 @@
       frag.appendChild(card);
     }
     el.sponsorsList.appendChild(frag);
+  }
+
+  function filteredShowLeads() {
+    const q = (el.showSearch?.value || "").trim().toLowerCase();
+    const kind = el.showKindFilter ? el.showKindFilter.value : "";
+    return [...(state.showLeads || [])]
+      .filter((s) => !kind || s.kind === kind)
+      .filter((s) => {
+        if (!q) return true;
+        return `${s.fullName} ${s.email} ${s.phone} ${s.telegram} ${s.comment}`.toLowerCase().includes(q);
+      })
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  function renderShowLeads() {
+    if (!el.showList) return;
+    const items = filteredShowLeads();
+    el.showList.innerHTML = "";
+    if (el.showEmpty) el.showEmpty.hidden = items.length > 0;
+    const frag = document.createDocumentFragment();
+    for (const s of items) {
+      const st = s.status || "new";
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "chat-card";
+      card.addEventListener("click", () => openShowDrawer(s.id));
+      card.innerHTML = `
+        <div class="chat-card-top">
+          <span class="chip sp-${esc(st)}">${esc(SHOW_KIND_LABELS[s.kind] || s.kind)}</span>
+          <span class="chat-card-id">${esc(fmtDate(s.createdAt))}</span>
+        </div>
+        <div class="app-card-name">${esc(s.fullName || "—")}</div>
+        <div class="chat-card-preview">${esc(s.comment || (s.amount ? s.amount.toLocaleString("ru-RU") + " ₽" : "—"))}</div>
+        <div class="chat-card-meta">
+          <span>${esc(s.phone || "—")}${s.telegram ? " · " + esc(s.telegram) : ""}${s.email ? " · " + esc(s.email) : ""}</span>
+        </div>`;
+      frag.appendChild(card);
+    }
+    el.showList.appendChild(frag);
+  }
+
+  function openShowDrawer(id, { preserveScroll = false } = {}) {
+    const s = state.showLeads.find((x) => x.id === id);
+    if (!s) return;
+    state.drawer = { kind: "show", showId: id };
+    const st = s.status || "new";
+    const statusBtns = SPONSOR_STATUS_ORDER.map((v) =>
+      `<button type="button" class="d-status-btn ${st === v ? "is-active" : ""}" data-show-status="${v}">${esc(SPONSOR_STATUS_LABELS[v])}</button>`
+    ).join("");
+    openDrawer(`
+      <span class="d-kicker">Виновна ли?</span>
+      <h2 class="d-title">${esc(s.fullName || "—")}</h2>
+      <span class="chip sp-${esc(st)}">${esc(SHOW_KIND_LABELS[s.kind] || s.kind)}</span>
+
+      <div class="d-section-title">Контакты</div>
+      <dl class="d-grid">
+        ${row("Дата", esc(fmtDate(s.createdAt)))}
+        ${row("Тип", esc(SHOW_KIND_LABELS[s.kind] || s.kind))}
+        ${row("Email", s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : "—")}
+        ${row("Телефон", s.phone ? `<a href="tel:${esc(s.phone)}">${esc(s.phone)}</a>` : "—")}
+        ${row("Telegram", esc(s.telegram || "—"))}
+        ${s.amount ? row("Сумма", esc(s.amount.toLocaleString("ru-RU") + " ₽")) : ""}
+      </dl>
+
+      <div class="d-section-title">Комментарий</div>
+      <div class="transcript"><div class="msg msg-bot">${esc(s.comment || "—")}</div></div>
+
+      <div class="d-section-title">Статус</div>
+      <div class="d-status-row">${statusBtns}</div>
+    `, { preserveScroll });
+
+    el.drawerBody.querySelectorAll(".d-status-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const status = btn.dataset.showStatus;
+        try {
+          const res = await api(`/api/show-leads/${s.id}/status`, {
+            method: "POST", body: JSON.stringify({ status }),
+          });
+          Object.assign(s, res.item);
+          setBadge(el.tabShowCount, state.showLeads.filter((x) => (x.status || "new") === "new").length);
+          renderShowLeads();
+          openShowDrawer(s.id, { preserveScroll: true });
+          toast(`Статус: ${SPONSOR_STATUS_LABELS[status] || status}`, "ok");
+        } catch (err) {
+          toast(`Не удалось изменить статус: ${err.message}`, "err");
+        }
+      });
+    });
   }
 
   function filteredTickets() {
@@ -1722,6 +1833,7 @@
     el.viewChats.hidden = tab !== "chats";
     el.viewSponsors.hidden = tab !== "sponsors";
     if (el.viewTickets) el.viewTickets.hidden = tab !== "tickets";
+    if (el.viewShow) el.viewShow.hidden = tab !== "show";
     if (el.viewAnalytics) el.viewAnalytics.hidden = tab !== "analytics";
   }
 
@@ -1789,6 +1901,8 @@
   });
   el.chatsSearch.addEventListener("input", renderChats);
   if (el.sponsorsSearch) el.sponsorsSearch.addEventListener("input", renderSponsors);
+  if (el.showSearch) el.showSearch.addEventListener("input", renderShowLeads);
+  if (el.showKindFilter) el.showKindFilter.addEventListener("change", renderShowLeads);
   if (el.ticketsSearch) el.ticketsSearch.addEventListener("input", renderTickets);
   if (el.ticketsStatusFilter) el.ticketsStatusFilter.addEventListener("change", renderTickets);
   const exportTicketsBtn = document.getElementById("export-tickets");
