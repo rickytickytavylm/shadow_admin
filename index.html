@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260819a">
+  <link rel="stylesheet" href="styles.css?v=20260908a">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -51,7 +51,10 @@
     <!-- ЗАЯВКИ -->
     <section id="view-apps" class="view">
       <div class="toolbar">
-        <input id="apps-search" class="field field--search" type="search" placeholder="Поиск: имя, email, телефон, город…">
+        <div class="search-wrap">
+          <input id="apps-search" class="field field--search" type="search" placeholder="Поиск: имя, email, телефон, город…">
+          <button type="button" class="search-clear" data-clear="apps-search" aria-label="Очистить поиск" hidden>×</button>
+        </div>
         <select id="category-filter" class="field field--select" aria-label="Категория">
           <option value="">Все категории</option>
         </select>
@@ -74,6 +77,8 @@
         <select id="promo-filter" class="field field--select" aria-label="Промокод">
           <option value="">Все промо</option>
         </select>
+        <input id="bulk-send-at" class="field" type="datetime-local" value="2026-09-14T11:00" aria-label="Дата рассылки" style="flex:0 0 auto;min-width:210px">
+        <button id="bulk-schedule" class="btn-export" type="button">Таймер рассылки</button>
         <button id="export-excel" class="btn-export" type="button" aria-label="Скачать заявки в Excel">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
           <span>Excel</span>
@@ -87,7 +92,10 @@
     <!-- ЧАТЫ -->
     <section id="view-chats" class="view" hidden>
       <div class="toolbar">
-        <input id="chats-search" class="field field--search" type="search" placeholder="Поиск по тексту диалога или device id…">
+        <div class="search-wrap">
+          <input id="chats-search" class="field field--search" type="search" placeholder="Поиск по тексту диалога или device id…">
+          <button type="button" class="search-clear" data-clear="chats-search" aria-label="Очистить поиск" hidden>×</button>
+        </div>
       </div>
       <div id="chats-list" class="chats-list"></div>
       <p id="chats-empty" class="empty-state" hidden>Диалогов с ИИ пока нет.</p>
@@ -96,7 +104,10 @@
     <!-- СПОНСОРЫ -->
     <section id="view-sponsors" class="view" hidden>
       <div class="toolbar">
-        <input id="sponsors-search" class="field field--search" type="search" placeholder="Поиск: имя, бренд, email, текст…">
+        <div class="search-wrap">
+          <input id="sponsors-search" class="field field--search" type="search" placeholder="Поиск: имя, бренд, email, текст…">
+          <button type="button" class="search-clear" data-clear="sponsors-search" aria-label="Очистить поиск" hidden>×</button>
+        </div>
       </div>
       <div id="sponsors-list" class="chats-list"></div>
       <p id="sponsors-empty" class="empty-state" hidden>Заявок на спонсорство пока нет.</p>
@@ -105,11 +116,20 @@
     <!-- ЗРИТЕЛИ -->
     <section id="view-tickets" class="view" hidden>
       <div class="toolbar">
-        <input id="tickets-search" class="field field--search" type="search" placeholder="Поиск: имя, телефон, почта, номер заказа…">
+        <div class="search-wrap">
+          <input id="tickets-search" class="field field--search" type="search" placeholder="Поиск: имя, телефон, почта, номер заказа…">
+          <button type="button" class="search-clear" data-clear="tickets-search" aria-label="Очистить поиск" hidden>×</button>
+        </div>
         <select id="tickets-status-filter" class="field field--select" aria-label="Статус">
           <option value="paid" selected>Оплачено</option>
           <option value="awaiting_payment">Не оплачено</option>
           <option value="">Все</option>
+        </select>
+        <select id="tickets-promo-filter" class="field field--select" aria-label="Промокод">
+          <option value="">Все промо</option>
+          <option value="KRISBRO">KRISBRO · 1500 ₽</option>
+          <option value="SEEYOUSOON">SEEYOUSOON · 0 ₽</option>
+          <option value="__none__">Без промо</option>
         </select>
         <button id="export-tickets" class="btn-export" type="button" aria-label="Скачать список зрителей">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -124,7 +144,10 @@
     <!-- СПЕКТАКЛЬ -->
     <section id="view-show" class="view" hidden>
       <div class="toolbar">
-        <input id="show-search" class="field field--search" type="search" placeholder="Поиск: имя, почта, телефон, Telegram…">
+        <div class="search-wrap">
+          <input id="show-search" class="field field--search" type="search" placeholder="Поиск: имя, почта, телефон, Telegram…">
+          <button type="button" class="search-clear" data-clear="show-search" aria-label="Очистить поиск" hidden>×</button>
+        </div>
         <select id="show-kind-filter" class="field field--select" aria-label="Тип заявки">
           <option value="">Все типы</option>
           <option value="collaboration">Коллаборация</option>
@@ -149,6 +172,9 @@
         <div id="apps-summary-accepted" class="stat-row"></div>
         <h2 class="analytics-title" style="margin-top:18px;font-size:17px">Разбивка по суммам оплаты</h2>
         <div id="apps-summary-prices" class="stat-row"></div>
+        <span class="section-kicker-sm" style="margin-top:28px;display:block">Зрители</span>
+        <h2 class="analytics-title" style="font-size:17px">Билеты · 1500 / 2000 · промокоды</h2>
+        <div id="tickets-summary-stats" class="stat-row"></div>
         <details class="analytics-deleted" id="deleted-archive-wrap" style="margin-top:18px">
           <summary>Архив удалённых оплаченных заявок</summary>
           <div id="deleted-archive-list" class="chats-list" style="margin-top:12px"></div>
@@ -256,7 +282,7 @@
       });
     }
   </script>
-  <script src="config.js?v=20260831c"></script>
-  <script src="app.js?v=20260831c"></script>
+  <script src="config.js?v=20260908a"></script>
+  <script src="app.js?v=20260908a"></script>
 </body>
 </html>

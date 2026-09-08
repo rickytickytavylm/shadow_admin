@@ -30,9 +30,11 @@
   const WORKFLOW_STATUSES = ["reserve", "accepted", "rejected", "reviewing"];
   const PAYMENT_STATUSES = ["awaiting_payment", "paid"];
   const DEFAULT_REPLY_SUBJECT = "Чемпионат «Тень»";
+  const PAY_LINK = "https://xn----7sbocmxidei1bb9cwe.xn--p1ai/apply.html#packages";
+  const OS_TEMPLATE_IDS = new Set(["accepted", "reserve", "rejected"]);
+  const DEFAULT_BULK_SEND = "2026-09-14T11:00";
 
-  // Готовые шаблоны писем. [Имя] подставляется автоматически, остальные [ссылки]/
-  // [индивидуальная обратная связь] правятся вручную перед отправкой.
+  // Готовые шаблоны писем. [Имя] и заметка ОС подставляются автоматически.
   const EMAIL_TEMPLATES = [
     {
       id: "accepted",
@@ -40,16 +42,25 @@
       subject: "Вы прошли видеоотбор чемпионата «Тень»",
       body:
 `Здравствуйте, [Имя]!
+
 Поздравляем! По результатам видеоотбора вы прошли в чемпионат «Тень».
-Обратная связь от Кристины Бродецкой по вашему номеру:
+
+Обратная связь от Кристины Бродецкой по вашему видео:
+
 [индивидуальная обратная связь]
-Следующий шаг — оплатить основной взнос за участие и заполнить анкету участника.
-Срок оплаты основного взноса: до 21 сентября.
-Ссылка на оплату:
-[ссылка]
-Ссылка на анкету участника:
-[ссылка]
-Пожалуйста, выполните оба шага в установленный срок, чтобы подтвердить участие.
+
+Следующий шаг — оплатить основной взнос за участие.
+
+Срок оплаты: до 21 сентября включительно
+
+Оплатить участие можно по ссылке:
+
+${PAY_LINK}
+
+После оплаты вам автоматически придёт письмо с подтверждением зачисления в состав участников чемпионата и ссылкой на анкету участника.
+
+Пожалуйста, оплатите взнос в установленный срок, чтобы подтвердить своё участие.
+
 С уважением,
 Команда чемпионата «Тень»`,
     },
@@ -62,7 +73,7 @@
 Спасибо за вашу заявку и участие в видеоотборе чемпионата «Тень».
 По результатам отсмотра ваша заявка попала в резерв.
 Это означает, что на данный момент вы не включены в основной список участников, но можете быть приглашены к участию, если появится возможность добавить номер в программу.
-Обратная связь от Кристины Бродецкой по вашему номеру:
+Обратная связь от Кристины Бродецкой по вашему видео:
 [индивидуальная обратная связь]
 Если место освободится, мы свяжемся с вами дополнительно.
 С уважением,
@@ -76,7 +87,7 @@
 `Здравствуйте, [Имя]!
 Спасибо за вашу заявку и участие в видеоотборе чемпионата «Тень».
 К сожалению, по результатам отсмотра ваша заявка не прошла в основной состав участников.
-Обратная связь от Кристины Бродецкой по вашему номеру:
+Обратная связь от Кристины Бродецкой по вашему видео:
 [индивидуальная обратная связь]
 Мы благодарим вас за интерес к чемпионату и за проделанную работу. Надеемся, что эта обратная связь будет полезна для вашего дальнейшего развития и подготовки будущих номеров.
 Будем рады видеть вас на чемпионате в качестве зрителя. «Тень» — это не только сцена для участников, но и пространство для вдохновения, новых идей и сильных выступлений.
@@ -141,7 +152,9 @@
     ticketsEmpty: document.getElementById("tickets-empty"),
     ticketsSearch: document.getElementById("tickets-search"),
     ticketsStatusFilter: document.getElementById("tickets-status-filter"),
+    ticketsPromoFilter: document.getElementById("tickets-promo-filter"),
     ticketsStats: document.getElementById("tickets-stats"),
+    ticketsSummaryStats: document.getElementById("tickets-summary-stats"),
     analyticsList: document.getElementById("analytics-list"),
     analyticsEmpty: document.getElementById("analytics-empty"),
     analyticsStats: document.getElementById("analytics-stats"),
@@ -610,11 +623,80 @@
     return true;
   }
 
-  // Настоящая переписка: автописьмо «Заявка принята» не считается.
-  // Фильтр «Есть переписка» — со второго сообщения (ответ участника или наш ответ).
+  // Автоподтверждение и шаблоны с ОС не считаются перепиской —
+  // иначе после рассылки ОС фильтр «Есть переписка» покажет всех.
+  function isIgnoredCorrespondenceMsg(m) {
+    if (!m) return true;
+    if (m.direction === "in") return false;
+    const kind = String(m.kind || "").toLowerCase();
+    if (kind === "auto" || kind === "template" || kind === "scheduled") return true;
+    const blob = `${m.subject || ""} ${m.text || ""}`.toLowerCase();
+    if (blob.includes("обратная связь от кристины")) return true;
+    if (blob.includes("заявка принята")) return true;
+    if (blob.includes("автоматическое письмо-подтверждение")) return true;
+    return false;
+  }
+
+  function realCorrespondenceMessages(a) {
+    return (Array.isArray(a.messages) ? a.messages : []).filter((m) => !isIgnoredCorrespondenceMsg(m));
+  }
+
   function hasRealCorrespondence(a) {
-    const msgs = Array.isArray(a.messages) ? a.messages : [];
-    return msgs.length >= 2;
+    return realCorrespondenceMessages(a).length > 0;
+  }
+
+  function fillTemplateBody(tpl, a) {
+    const firstName = (a.fullName || "").trim().split(/\s+/)[0] || "";
+    const os = (a.feedbackText || "").trim();
+    return tpl.body
+      .replace(/\[Имя\]/g, firstName || "[Имя]")
+      .replace(/\[индивидуальная обратная связь\]/g, os || "[индивидуальная обратная связь]")
+      .replace(/\[ссылка на оплату\]/g, PAY_LINK)
+      .replace(/\[ссылка\]/g, PAY_LINK);
+  }
+
+  function localDateTimeToIso(value) {
+    const raw = String(value || "").trim();
+    const m = raw.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+    if (!m) return "2026-09-14T08:00:00.000Z";
+    return new Date(`${m[1]}:00+03:00`).toISOString();
+  }
+
+  function isoToLocalDateTime(iso) {
+    if (!iso) return DEFAULT_BULK_SEND;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return DEFAULT_BULK_SEND;
+    const parts = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Moscow",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    const get = (t) => parts.find((p) => p.type === t)?.value || "";
+    return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+  }
+
+  function ticketPriceBuckets() {
+    const paid = (state.tickets || []).filter((t) => t.status === "paid");
+    let p2000 = 0;
+    let p1500 = 0;
+    let p0 = 0;
+    let kris = 0;
+    let see = 0;
+    for (const t of paid) {
+      const qty = Number(t.quantity) || 1;
+      const unit = Number(t.unitPrice) || (Number(t.paidAmount) / qty) || 0;
+      const code = (t.promoCode || "").toUpperCase();
+      if (code === "KRISBRO") kris += 1;
+      if (code === "SEEYOUSOON") see += 1;
+      if (unit === 0 || code === "SEEYOUSOON") p0 += 1;
+      else if (unit === 1500 || code === "KRISBRO") p1500 += 1;
+      else p2000 += 1;
+    }
+    return { paid: paid.length, p2000, p1500, p0, kris, see };
   }
 
   function buildAppCardHtml(a) {
@@ -624,7 +706,14 @@
     const cardCatsHtml = cardCats.map((c) => {
       const st = categoryStatus(a, c);
       const showSt = WORKFLOW_STATUSES.includes(st);
-      return `<span class="chip chip-cat">${esc(catLabel(c))}${showSt ? " · " + esc(statusLabel(st)) : ""}</span>`;
+      let extra = "";
+      if (c === "battle" && a.battleLevel) {
+        extra = a.battleLevel === "amateur" ? " · любители" : (a.battleLevel === "professional" ? " · профи" : "");
+      }
+      if (c === "shadow" && a.shadowType) {
+        extra = a.shadowType === "solo" ? " · соло" : (a.shadowType === "duet" ? " · дуэт" : (a.shadowType === "group" ? " · группы" : ""));
+      }
+      return `<span class="chip chip-cat">${esc(catLabel(c))}${extra}${showSt ? " · " + esc(statusLabel(st)) : ""}</span>`;
     }).join("");
     return `
       <div class="app-card-top">
@@ -642,8 +731,10 @@
           : `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Не оплачено</span>`}
         ${nr
           ? `<span class="chip chip-reply">✉ требует ответа</span>`
-          : (hasRealCorrespondence(a) ? `<span class="chip chip-muted">✉ ${msgs.length}</span>` : "")}
+          : (hasRealCorrespondence(a) ? `<span class="chip chip-muted">✉ ${realCorrespondenceMessages(a).length}</span>` : "")}
         ${a.feedbackGiven ? `<span class="chip chip-os">ОС ✓</span>` : ""}
+        ${a.feedbackText ? `<span class="chip chip-muted">заметка ОС</span>` : ""}
+        ${a.scheduledSendAt && !a.scheduledSentAt ? `<span class="chip chip-muted">⏰ ${esc(fmtDate(a.scheduledSendAt))}</span>` : ""}
         ${a.promoCode ? `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>` : ""}
       </div>`;
   }
@@ -717,13 +808,16 @@
           "Сумма, ₽": Number(a.paidAmount) || "",
           "Промокод": a.promoCode || "",
           "ОС": a.feedbackGiven ? "Предоставлена" : "",
+          "Обратная связь": a.feedbackText || "",
+          "Батл": a.battleLevel === "amateur" ? "Любители" : (a.battleLevel === "professional" ? "Профи" : (a.battleLevel || "")),
+          "Тень": a.shadowType === "solo" ? "Соло" : (a.shadowType === "duet" ? "Дуэт" : (a.shadowType === "group" ? "Группы" : (a.shadowType || ""))),
           "Видео": a.videoUrl || "",
-          "Сообщений": msgs.length,
+          "Сообщений": realCorrespondenceMessages(a).length,
           "ID платежа": a.paymentId || "",
         };
       });
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 12, 14, 32, 11, 24].map((wch) => ({ wch }));
+      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 12, 14, 40, 12, 10, 32, 11, 24].map((wch) => ({ wch }));
       if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Заявки");
@@ -900,8 +994,15 @@
   function filteredTickets() {
     const q = (el.ticketsSearch?.value || "").trim().toLowerCase();
     const st = el.ticketsStatusFilter ? el.ticketsStatusFilter.value : "paid";
+    const promo = el.ticketsPromoFilter ? el.ticketsPromoFilter.value : "";
     return [...(state.tickets || [])]
       .filter((t) => !st || t.status === st)
+      .filter((t) => {
+        if (!promo) return true;
+        const code = (t.promoCode || "").toUpperCase();
+        if (promo === "__none__") return !code;
+        return code === promo;
+      })
       .filter((t) => {
         if (!q) return true;
         return `${t.fullName} ${t.email} ${t.phone} ${t.orderNumber} ${t.promoCode}`.toLowerCase().includes(q);
@@ -917,12 +1018,16 @@
     const unpaid = (state.tickets || []).filter((t) => t.status === "awaiting_payment").length;
     const box = (label, val) =>
       `<div class="stat-box"><span class="stat-val">${val}</span><span class="stat-label">${label}</span></div>`;
+    const buckets = ticketPriceBuckets();
     if (el.ticketsStats) {
       el.ticketsStats.innerHTML =
         box("Оплачено заказов", paid.length) +
         box("Билетов", seats) +
         box("Сумма, ₽", revenue.toLocaleString("ru-RU")) +
-        box("Не оплачено", unpaid);
+        box("Не оплачено", unpaid) +
+        box("2000 ₽", buckets.p2000) +
+        box("1500 ₽ · KRISBRO", buckets.p1500) +
+        box("0 ₽ · SEEYOUSOON", buckets.p0);
     }
     const items = filteredTickets();
     el.ticketsList.innerHTML = "";
@@ -1079,6 +1184,16 @@
       el.appsSummaryPrices.innerHTML = keys.length
         ? keys.map((amt) => box(`${amt.toLocaleString("ru-RU")} ₽`, byPrice[amt])).join("")
         : box("Нет данных", 0);
+    }
+    if (el.ticketsSummaryStats) {
+      const tb = ticketPriceBuckets();
+      el.ticketsSummaryStats.innerHTML =
+        box("Оплачено", tb.paid) +
+        box("2000 ₽", tb.p2000) +
+        box("1500 ₽", tb.p1500) +
+        box("0 ₽", tb.p0) +
+        box("KRISBRO", tb.kris) +
+        box("SEEYOUSOON", tb.see);
     }
     // Архив удалённых оплаченных
     if (el.deletedArchiveList) {
@@ -1239,7 +1354,22 @@
       if (preserveScroll) el.drawer.scrollTop = prevScroll;
     });
   }
+  function persistOsDraft() {
+    const appId = state.drawer?.kind === "app" ? state.drawer.appId : null;
+    const ta = document.getElementById("os-note-edit");
+    if (!appId || !ta || ta.hidden) return;
+    const a = state.apps.find((x) => x.id === appId);
+    if (!a || ta.value === (a.feedbackText || "")) return;
+    api(`/api/applications/${appId}/feedback-text`, {
+      method: "POST",
+      body: JSON.stringify({ text: ta.value }),
+    }).then((res) => {
+      if (res?.item && a) Object.assign(a, res.item);
+    }).catch(() => {});
+  }
+
   function closeDrawer() {
+    persistOsDraft();
     el.drawer.classList.remove("is-open");
     el.drawerBackdrop.classList.remove("is-open");
     el.drawer.setAttribute("aria-hidden", "true");
@@ -1305,6 +1435,10 @@
             <option value="">📄 Вставить шаблон…</option>
             ${templateOptions}
           </select>
+          <label class="d-os-toggle" id="reply-use-tpl-wrap" hidden>
+            <input type="checkbox" id="reply-use-tpl" checked>
+            <span>Вставить шаблон</span>
+          </label>
           <div class="subject-row">
             <input id="reply-subject" class="field" type="text" placeholder="Тема письма" value="${esc(lastSubj)}">
             <button type="button" id="reply-subject-clear" class="subject-clear" aria-label="Очистить тему" title="Очистить тему">×</button>
@@ -1376,6 +1510,19 @@
         ${a.comment ? row("Комментарий", esc(a.comment)) : ""}
       </dl>
 
+      <div class="d-section-title">Обратная связь (заметка)</div>
+      <p class="d-hint">Сохраняется отдельно от письма и подставляется в шаблоны «прошёл / резерв / не прошёл».</p>
+      <div class="os-note" id="os-note">
+        <div class="os-note-view" id="os-note-view">${a.feedbackText ? esc(a.feedbackText) : "<span class='d-hint'>Пока пусто</span>"}</div>
+        <textarea id="os-note-edit" class="field" rows="6" hidden>${esc(a.feedbackText || "")}</textarea>
+        <div class="os-note-actions">
+          <button type="button" class="btn btn-ghost" id="os-edit">Редактировать</button>
+          <button type="button" class="btn btn-ghost" id="os-save" hidden>Сохранить</button>
+          <button type="button" class="btn btn-ghost" id="os-clear" hidden>Удалить текст</button>
+          <button type="button" class="btn btn-ghost" id="os-copy">Копировать заметку</button>
+        </div>
+      </div>
+
       <div class="d-section-title">Статус по категориям</div>
       <p class="d-hint">Можно принять в одной категории и отклонить в другой. Участник статусы не видит.</p>
       ${perCatStatusHtml || "<p class='d-hint'>Категории не указаны.</p>"}
@@ -1383,6 +1530,15 @@
         <input type="checkbox" id="fb-toggle" ${a.feedbackGiven ? "checked" : ""}>
         <span>Обратная связь (ОС) предоставлена</span>
       </label>
+
+      <div class="d-section-title">Таймер письма</div>
+      ${a.scheduledSentAt
+        ? `<p class="d-hint">Письмо этой волны уже отправлено ${esc(fmtDate(a.scheduledSentAt))}.</p>`
+        : `<p class="d-hint">${a.scheduledSendAt
+          ? "Запланировано на " + esc(fmtDate(a.scheduledSendAt)) + ". Можно поменять дату только для этой заявки."
+          : "Письмо уйдёт в выбранное время, если статус «прошёл / резерв / не прошёл». «На рассмотрении» не трогаем."}</p>
+        <input id="app-send-at" class="field" type="datetime-local" value="${esc(isoToLocalDateTime(a.scheduledSendAt))}">
+        <button type="button" class="btn btn-ghost" id="app-schedule" style="margin-top:10px">Поставить таймер на эту заявку</button>`}
 
       <div class="d-section-title">Переписка</div>
       <div class="reply-needed-row">
@@ -1401,6 +1557,25 @@
         <div style="margin-top:12px">
           <p class="d-hint">Категории (отметьте нужные)</p>
           <div class="edit-cats">${catChecks}</div>
+          <div id="edit-battle-wrap" ${cats.includes("battle") ? "" : "hidden"}>
+            <p class="d-hint" style="margin-top:10px">Батл · уровень</p>
+            <select id="edit-battle-level" class="field field--select">
+              <option value="" ${!a.battleLevel ? "selected" : ""}>Не указан</option>
+              <option value="amateur" ${a.battleLevel === "amateur" ? "selected" : ""}>Любители</option>
+              <option value="professional" ${a.battleLevel === "professional" ? "selected" : ""}>Профи</option>
+            </select>
+          </div>
+          <div id="edit-shadow-wrap" ${cats.includes("shadow") ? "" : "hidden"}>
+            <p class="d-hint" style="margin-top:10px">Тень · состав</p>
+            <select id="edit-shadow-type" class="field field--select">
+              <option value="" ${!a.shadowType ? "selected" : ""}>Не указан</option>
+              <option value="solo" ${a.shadowType === "solo" ? "selected" : ""}>Соло</option>
+              <option value="duet" ${a.shadowType === "duet" ? "selected" : ""}>Дуэт</option>
+              <option value="group" ${a.shadowType === "group" ? "selected" : ""}>Группы</option>
+            </select>
+            <label class="d-hint" style="display:block;margin-top:10px">Идея номера</label>
+            <textarea id="edit-shadow-idea" class="field" rows="3">${esc(a.shadowIdea || "")}</textarea>
+          </div>
           <label class="d-hint" style="display:block;margin-top:10px">Видео (каждая ссылка с новой строки)</label>
           <textarea id="edit-videos" class="field" rows="3">${esc(a.videoUrl || "")}</textarea>
           <label class="d-hint" style="display:block;margin-top:10px">Промокод (например WELCOME / ZVEZDA / PROBRO)</label>
@@ -1471,6 +1646,93 @@
       });
     });
 
+    el.drawerBody.querySelectorAll(".edit-cats input").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const selected = [...el.drawerBody.querySelectorAll(".edit-cats input:checked")].map((x) => x.value);
+        const battleWrap = document.getElementById("edit-battle-wrap");
+        const shadowWrap = document.getElementById("edit-shadow-wrap");
+        if (battleWrap) battleWrap.hidden = !selected.includes("battle");
+        if (shadowWrap) shadowWrap.hidden = !selected.includes("shadow");
+      });
+    });
+
+    const osView = document.getElementById("os-note-view");
+    const osEdit = document.getElementById("os-note-edit");
+    const osEditBtn = document.getElementById("os-edit");
+    const osSaveBtn = document.getElementById("os-save");
+    const osClearBtn = document.getElementById("os-clear");
+    const osCopyBtn = document.getElementById("os-copy");
+    const setOsMode = (editing) => {
+      if (osView) osView.hidden = editing;
+      if (osEdit) osEdit.hidden = !editing;
+      if (osEditBtn) osEditBtn.hidden = editing;
+      if (osSaveBtn) osSaveBtn.hidden = !editing;
+      if (osClearBtn) osClearBtn.hidden = !editing;
+    };
+    if (osEditBtn) {
+      osEditBtn.addEventListener("click", () => {
+        setOsMode(true);
+        osEdit?.focus();
+      });
+    }
+    if (osClearBtn) {
+      osClearBtn.addEventListener("click", () => {
+        if (osEdit) osEdit.value = "";
+        osEdit?.focus();
+      });
+    }
+    if (osCopyBtn) {
+      osCopyBtn.addEventListener("click", async () => {
+        const text = (osEdit && !osEdit.hidden ? osEdit.value : (a.feedbackText || "")).trim();
+        if (!text) { toast("Заметка пустая", "err"); return; }
+        try {
+          await navigator.clipboard.writeText(text);
+          toast("Заметка скопирована", "ok");
+        } catch {
+          toast("Не удалось скопировать", "err");
+        }
+      });
+    }
+    if (osSaveBtn) {
+      osSaveBtn.addEventListener("click", async () => {
+        osSaveBtn.disabled = true;
+        try {
+          const res = await api(`/api/applications/${a.id}/feedback-text`, {
+            method: "POST",
+            body: JSON.stringify({ text: osEdit ? osEdit.value : "" }),
+          });
+          Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps();
+          toast("Обратная связь сохранена", "ok");
+        } catch (err) {
+          osSaveBtn.disabled = false;
+          toast(`Не удалось сохранить ОС: ${err.message}`, "err");
+        }
+      });
+    }
+
+    const appScheduleBtn = document.getElementById("app-schedule");
+    if (appScheduleBtn) {
+      appScheduleBtn.addEventListener("click", async () => {
+        const at = localDateTimeToIso(document.getElementById("app-send-at")?.value);
+        appScheduleBtn.disabled = true;
+        try {
+          const res = await api(`/api/applications/${a.id}/schedule`, {
+            method: "POST",
+            body: JSON.stringify({ at }),
+          });
+          Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps();
+          toast("Таймер поставлен на эту заявку", "ok");
+        } catch (err) {
+          appScheduleBtn.disabled = false;
+          toast(`Не удалось поставить таймер: ${err.message}`, "err");
+        }
+      });
+    }
+
     // ОС — отдельная пометка этапа, не связана с «требует ответа»
     const fbToggle = document.getElementById("fb-toggle");
     if (fbToggle) {
@@ -1497,13 +1759,16 @@
         const categories = [...el.drawerBody.querySelectorAll(".edit-cats input:checked")].map((x) => x.value);
         const videoUrl = document.getElementById("edit-videos")?.value || "";
         const promoCode = document.getElementById("edit-promo")?.value || "";
+        const battleLevel = document.getElementById("edit-battle-level")?.value || "";
+        const shadowType = document.getElementById("edit-shadow-type")?.value || "";
+        const shadowIdea = document.getElementById("edit-shadow-idea")?.value || "";
         const editComment = (document.getElementById("edit-comment")?.value || "").trim();
         if (!categories.length) { toast("Выберите хотя бы одну категорию", "err"); return; }
         if (!editComment) { toast("Укажите комментарий к правке — он попадёт в историю", "err"); return; }
         try {
           const res = await api(`/api/applications/${a.id}/edit`, {
             method: "POST",
-            body: JSON.stringify({ categories, videoUrl, promoCode, editComment }),
+            body: JSON.stringify({ categories, videoUrl, promoCode, battleLevel, shadowType, shadowIdea, editComment }),
           });
           Object.assign(a, res.item);
           openAppDrawer(a.id, { preserveScroll: true });
@@ -1565,6 +1830,9 @@
 
     // Пикер шаблонов писем
     const tplSelect = document.getElementById("reply-template");
+    const useTplWrap = document.getElementById("reply-use-tpl-wrap");
+    const useTpl = document.getElementById("reply-use-tpl");
+    let replyTplState = { id: "", prevSubject: "", prevBody: "" };
     if (tplSelect) {
       tplSelect.addEventListener("change", async () => {
         const tpl = EMAIL_TEMPLATES.find((t) => t.id === tplSelect.value);
@@ -1572,8 +1840,7 @@
         if (!tpl) return;
         const subjEl = document.getElementById("reply-subject");
         const msgEl = document.getElementById("reply-message");
-        const firstName = (a.fullName || "").trim().split(/\s+/)[0] || "";
-        const body = tpl.body.replace(/\[Имя\]/g, firstName || "[Имя]");
+        const body = fillTemplateBody(tpl, a);
         if (subjEl.value.trim() || msgEl.value.trim()) {
           const ok = await showConfirm({
             title: "Вставить шаблон?",
@@ -1581,10 +1848,25 @@
           });
           if (!ok) return;
         }
+        replyTplState = { id: tpl.id, prevSubject: subjEl.value, prevBody: msgEl.value };
         subjEl.value = tpl.subject;
         msgEl.value = body;
+        if (useTplWrap) useTplWrap.hidden = false;
+        if (useTpl) useTpl.checked = true;
         msgEl.focus();
-        toast("Шаблон вставлен — проверьте [ссылки] и обратную связь", "ok");
+        toast(a.feedbackText ? "Шаблон вставлен вместе с заметкой ОС" : "Шаблон вставлен — допишите обратную связь в заметке", "ok");
+      });
+    }
+    if (useTpl) {
+      useTpl.addEventListener("change", () => {
+        const subjEl = document.getElementById("reply-subject");
+        const msgEl = document.getElementById("reply-message");
+        if (!useTpl.checked) {
+          if (subjEl) subjEl.value = replyTplState.prevSubject || "";
+          if (msgEl) msgEl.value = replyTplState.prevBody || "";
+          replyTplState.id = "";
+          toast("Шаблон убран из письма", "ok");
+        }
       });
     }
 
@@ -1605,8 +1887,11 @@
         sendBtn.disabled = true; sendBtn.textContent = "Отправляем…";
         statusEl.className = "reply-status"; statusEl.textContent = "";
         try {
+          const kind = (useTpl && useTpl.checked && OS_TEMPLATE_IDS.has(replyTplState.id))
+            ? "template"
+            : "";
           const res = await api(`/api/applications/${a.id}/reply`, {
-            method: "POST", body: JSON.stringify({ subject, message }),
+            method: "POST", body: JSON.stringify({ subject, message, kind }),
           });
           Object.assign(a, res.item);
           toast(`Письмо отправлено на ${a.email}`, "ok");
@@ -1893,6 +2178,52 @@
   if (el.promoFilter) el.promoFilter.addEventListener("change", renderApps);
   const exportBtn = document.getElementById("export-excel");
   if (exportBtn) exportBtn.addEventListener("click", () => exportToExcel(exportBtn));
+  const bulkScheduleBtn = document.getElementById("bulk-schedule");
+  if (bulkScheduleBtn) {
+    bulkScheduleBtn.addEventListener("click", async () => {
+      const atEl = document.getElementById("bulk-send-at");
+      const at = localDateTimeToIso(atEl?.value || DEFAULT_BULK_SEND);
+      const eligible = (state.apps || []).filter((a) => {
+        if (a.scheduledSentAt) return false;
+        return appCategories(a).some((c) => ["accepted", "reserve", "rejected"].includes(categoryStatus(a, c)));
+      });
+      if (!eligible.length) {
+        toast("Нет заявок со статусом прошёл / резерв / не прошёл", "err");
+        return;
+      }
+      const ok = await showConfirm({
+        title: "Поставить таймер рассылки?",
+        message: `Письма уйдут ${atEl?.value?.replace("T", " ") || "14.09 11:00"} по Москве. Заявок: ${eligible.length}. Статус «на рассмотрении» не трогаем.`,
+      });
+      if (!ok) return;
+      bulkScheduleBtn.disabled = true;
+      try {
+        const res = await api("/api/applications/schedule-bulk", {
+          method: "POST",
+          body: JSON.stringify({ at, ids: eligible.map((x) => x.id) }),
+        });
+        toast(`Таймер: ${res.scheduled} заявок, пропущено ${res.skipped}`, "ok");
+        await loadAll();
+      } catch (err) {
+        toast(`Не удалось поставить таймер: ${err.message}`, "err");
+      } finally {
+        bulkScheduleBtn.disabled = false;
+      }
+    });
+  }
+  document.querySelectorAll(".search-clear").forEach((btn) => {
+    const input = document.getElementById(btn.dataset.clear);
+    if (!input) return;
+    const sync = () => { btn.hidden = !input.value; };
+    input.addEventListener("input", sync);
+    btn.addEventListener("click", () => {
+      input.value = "";
+      input.dispatchEvent(new Event("input"));
+      input.focus();
+      sync();
+    });
+    sync();
+  });
   const inboxAlert = document.getElementById("inbox-alert");
   if (inboxAlert) inboxAlert.addEventListener("click", () => {
     state.onlyNeedsReply = !state.onlyNeedsReply;
@@ -1905,6 +2236,7 @@
   if (el.showKindFilter) el.showKindFilter.addEventListener("change", renderShowLeads);
   if (el.ticketsSearch) el.ticketsSearch.addEventListener("input", renderTickets);
   if (el.ticketsStatusFilter) el.ticketsStatusFilter.addEventListener("change", renderTickets);
+  if (el.ticketsPromoFilter) el.ticketsPromoFilter.addEventListener("change", renderTickets);
   const exportTicketsBtn = document.getElementById("export-tickets");
   if (exportTicketsBtn) exportTicketsBtn.addEventListener("click", () => exportTicketsExcel(exportTicketsBtn));
   el.drawerClose.addEventListener("click", closeDrawer);
