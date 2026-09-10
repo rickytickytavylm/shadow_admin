@@ -408,7 +408,7 @@ ${PAY_LINK}
   function refreshOpenDrawer({ preserveScroll = false } = {}) {
     if (el.drawer.hidden) return;
     if (state.drawer.kind === "app" && state.drawer.appId) {
-      if (isReplyDraftOpen()) return;
+      if (isReplyDraftOpen() || isOsEditing()) return;
       const a = state.apps.find((x) => x.id === state.drawer.appId);
       if (a) openAppDrawer(a.id, { preserveScroll });
       return;
@@ -1354,18 +1354,59 @@ ${PAY_LINK}
       if (preserveScroll) el.drawer.scrollTop = prevScroll;
     });
   }
+  // ── Черновики ОС: localStorage + сервер, чтобы текст не терялся ни при каком сценарии ──
+  const OS_DRAFT_PREFIX = "teni_os_draft_";
+  function readOsDraft(id) {
+    try {
+      const v = localStorage.getItem(OS_DRAFT_PREFIX + id);
+      return v === null ? null : v;
+    } catch { return null; }
+  }
+  function writeOsDraft(id, text) {
+    try { localStorage.setItem(OS_DRAFT_PREFIX + id, text); } catch {}
+  }
+  function clearOsDraft(id) {
+    try { localStorage.removeItem(OS_DRAFT_PREFIX + id); } catch {}
+  }
+  // Текст из открытого поля ОС этой заявки (если редактируется), иначе null.
+  function captureOsDraft(id) {
+    if (state.drawer?.kind !== "app" || state.drawer.appId !== id) return null;
+    const ta = document.getElementById("os-note-edit");
+    if (!ta || ta.hidden) return null;
+    return ta.value;
+  }
+  function isOsEditing() {
+    const ta = document.getElementById("os-note-edit");
+    return !!ta && !ta.hidden;
+  }
+
   function persistOsDraft() {
     const appId = state.drawer?.kind === "app" ? state.drawer.appId : null;
     const ta = document.getElementById("os-note-edit");
     if (!appId || !ta || ta.hidden) return;
     const a = state.apps.find((x) => x.id === appId);
     if (!a || ta.value === (a.feedbackText || "")) return;
+    writeOsDraft(appId, ta.value);
     api(`/api/applications/${appId}/feedback-text`, {
       method: "POST",
       body: JSON.stringify({ text: ta.value }),
     }).then((res) => {
       if (res?.item && a) Object.assign(a, res.item);
-    }).catch(() => {});
+      clearOsDraft(appId);
+      renderApps();
+      toast("Обратная связь сохранена", "ok");
+    }).catch(() => {
+      toast("Нет связи — черновик ОС сохранён на устройстве", "err");
+    });
+  }
+
+  // Итог отбора для письма: прошёл > резерв > не прошёл (как на сервере).
+  function selectionOutcomeClient(a) {
+    const sts = appCategories(a).map((c) => categoryStatus(a, c));
+    if (sts.includes("accepted")) return "accepted";
+    if (sts.includes("reserve")) return "reserve";
+    if (sts.includes("rejected")) return "rejected";
+    return null;
   }
 
   function closeDrawer() {
@@ -1385,7 +1426,14 @@ ${PAY_LINK}
   function openAppDrawer(id, { preserveScroll = false } = {}) {
     const a = state.apps.find((x) => x.id === id);
     if (!a) return;
+    // Если ОС сейчас редактируется — не теряем текст при перерисовке карточки.
+    const liveOs = captureOsDraft(id);
     state.drawer = { kind: "app", appId: id, chatId: null };
+    const osDraft = liveOs !== null ? liveOs : readOsDraft(id);
+    const osEditing = liveOs !== null || (osDraft !== null && osDraft !== (a.feedbackText || ""));
+    const osInitial = osEditing ? osDraft : (a.feedbackText || "");
+    const outcomePreview = selectionOutcomeClient(a);
+    const previewTpl = outcomePreview ? EMAIL_TEMPLATES.find((t) => t.id === outcomePreview) : null;
 
     const contact = [];
     if (a.email) contact.push(`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`);
@@ -1405,9 +1453,14 @@ ${PAY_LINK}
         }).join("")}</div>`
       : `<p class="reply-hint">Переписки пока нет.</p>`;
 
-    const payBtns = PAYMENT_STATUSES.map((s) =>
-      `<button type="button" class="d-status-btn ${(isPaid(a) ? "paid" : "awaiting_payment") === s ? "is-active" : ""}" data-status="${s}">${esc(statusLabel(s))}</button>`
-    ).join("");
+    // Тумблера «оплачено / не оплачено» больше нет: статус оплаты меняется
+    // только промокодом WELCOME/ZVEZDA в правке или возвратом с комментарием.
+    const paidEvidence = [];
+    if (a.paymentId) paidEvidence.push("есть платёж ЮKassa");
+    if (Number(a.paidAmount) > 0) paidEvidence.push(`сумма ${a.paidAmount} ₽`);
+    if (a.promoCode) paidEvidence.push(`промокод ${a.promoCode}`);
+    const payHistory = (Array.isArray(a.editHistory) ? a.editHistory : [])
+      .filter((h) => h?.patch && (h.patch.status || h.patch.from));
 
     // Категории — массив или fallback на одну
     const cats = appCategories(a);
@@ -1484,9 +1537,14 @@ ${PAY_LINK}
         ${row("Сумма", a.paidAmount ? esc(a.paidAmount) + " ₽" : (a.promoCode ? "0 ₽" : "—"))}
         ${a.promoCode ? row("Промокод", `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>`) : ""}
         ${a.paymentId ? row("ID платежа", `<span class="mono">${esc(a.paymentId)}</span>`) : ""}
+        ${payHistory.length ? row("История оплаты", payHistory.map((h) => `${esc(fmtDate(h.at))} — ${esc(h.comment || "")}`).join("<br>")) : ""}
       </dl>
-      <p class="d-hint">Оплата одна на заявку — даже если категорий несколько.</p>
-      <div class="d-status-row">${payBtns}</div>
+      <p class="d-hint">Оплата одна на заявку. Руками статус оплаты не переключается: «Оплачено» ставится промокодом WELCOME / ZVEZDA в «Редактировать» или возвратом с указанием причины.</p>
+      ${!isPaid(a) ? `
+        <div class="os-note-actions">
+          ${a.paymentId ? `<button type="button" class="btn btn-ghost" id="pay-verify">Проверить оплату в ЮKassa</button>` : ""}
+          <button type="button" class="btn btn-ghost" id="pay-restore">Вернуть «Оплачено»${paidEvidence.length ? " · " + esc(paidEvidence.join(", ")) : ""}</button>
+        </div>` : ""}
 
       <div class="d-section-title">Категории</div>
       <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px">${catsHtml || "—"}</div>
@@ -1511,14 +1569,15 @@ ${PAY_LINK}
       </dl>
 
       <div class="d-section-title">Обратная связь (заметка)</div>
-      <p class="d-hint">Сохраняется отдельно от письма и подставляется в шаблоны «прошёл / резерв / не прошёл».</p>
+      <p class="d-hint">Сохраняется автоматически по мере набора и отдельно от письма. В письмо подставляется сама — по статусу «прошёл / резерв / не прошёл».</p>
       <div class="os-note" id="os-note">
-        <div class="os-note-view" id="os-note-view">${a.feedbackText ? esc(a.feedbackText) : "<span class='d-hint'>Пока пусто</span>"}</div>
-        <textarea id="os-note-edit" class="field" rows="6" hidden>${esc(a.feedbackText || "")}</textarea>
+        <div class="os-note-view" id="os-note-view" ${osEditing ? "hidden" : ""}>${a.feedbackText ? esc(a.feedbackText) : "<span class='d-hint'>Пока пусто</span>"}</div>
+        <textarea id="os-note-edit" class="field" rows="6" ${osEditing ? "" : "hidden"}>${esc(osInitial)}</textarea>
+        <p class="d-hint" id="os-autosave" style="margin-top:6px">${osEditing ? "Черновик восстановлен — не забудьте нажать «Сохранить»" : ""}</p>
         <div class="os-note-actions">
-          <button type="button" class="btn btn-ghost" id="os-edit">Редактировать</button>
-          <button type="button" class="btn btn-ghost" id="os-save" hidden>Сохранить</button>
-          <button type="button" class="btn btn-ghost" id="os-clear" hidden>Удалить текст</button>
+          <button type="button" class="btn btn-ghost" id="os-edit" ${osEditing ? "hidden" : ""}>Редактировать</button>
+          <button type="button" class="btn btn-ghost" id="os-save" ${osEditing ? "" : "hidden"}>Сохранить</button>
+          <button type="button" class="btn btn-ghost" id="os-clear" ${osEditing ? "" : "hidden"}>Удалить текст</button>
           <button type="button" class="btn btn-ghost" id="os-copy">Копировать заметку</button>
         </div>
       </div>
@@ -1531,12 +1590,18 @@ ${PAY_LINK}
         <span>Обратная связь (ОС) предоставлена</span>
       </label>
 
-      <div class="d-section-title">Таймер письма</div>
+      <div class="d-section-title">Письмо по таймеру</div>
+      ${previewTpl
+        ? `<p class="d-hint">Шаблон подбирается автоматически по статусу: <b>${esc(previewTpl.label)}</b>. Заметка ОС вставляется сама${(a.feedbackText || "").trim() ? "" : " — <b>пока заметка пустая</b>"}. Руками шаблон ставить не нужно.</p>
+           <details class="d-details"><summary>Показать письмо, которое уйдёт</summary>
+             <div class="transcript" style="margin-top:10px"><div class="msg msg-user" style="max-width:100%"><div class="msg-subj">${esc(previewTpl.subject)}</div>${esc(fillTemplateBody(previewTpl, a))}</div></div>
+           </details>`
+        : `<p class="d-hint">Статус пока «на рассмотрении» — письмо по таймеру не уйдёт, пока не выбран «прошёл / резерв / не прошёл».</p>`}
       ${a.scheduledSentAt
         ? `<p class="d-hint">Письмо этой волны уже отправлено ${esc(fmtDate(a.scheduledSentAt))}.</p>`
         : `<p class="d-hint">${a.scheduledSendAt
           ? "Запланировано на " + esc(fmtDate(a.scheduledSendAt)) + ". Можно поменять дату только для этой заявки."
-          : "Письмо уйдёт в выбранное время, если статус «прошёл / резерв / не прошёл». «На рассмотрении» не трогаем."}</p>
+          : "Таймер на все заявки ставится кнопкой «Таймер рассылки» над списком. Здесь — дата только для этой заявки."}</p>
         <input id="app-send-at" class="field" type="datetime-local" value="${esc(isoToLocalDateTime(a.scheduledSendAt))}">
         <button type="button" class="btn btn-ghost" id="app-schedule" style="margin-top:10px">Поставить таймер на эту заявку</button>`}
 
@@ -1609,23 +1674,48 @@ ${PAY_LINK}
       </details>
     `, { preserveScroll });
 
-    // Оплата (глобально)
-    el.drawerBody.querySelectorAll(".d-status-btn[data-status]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const status = btn.dataset.status;
+    // Возврат «Оплачено» после ошибочного переключения — только с причиной в историю.
+    const payRestore = document.getElementById("pay-restore");
+    if (payRestore) {
+      payRestore.addEventListener("click", async () => {
+        const reason = window.prompt("Почему возвращаем «Оплачено»? Причина попадёт в историю правок.", "Оплата подтверждена, статус был переключён ошибочно");
+        if (reason === null) return;
+        if (reason.trim().length < 3) { toast("Укажите причину", "err"); return; }
+        payRestore.disabled = true;
         try {
-          const res = await api(`/api/applications/${a.id}/status`, {
-            method: "POST", body: JSON.stringify({ status }),
+          const res = await api(`/api/applications/${a.id}/restore-paid`, {
+            method: "POST", body: JSON.stringify({ editComment: reason.trim() }),
           });
           Object.assign(a, res.item);
           openAppDrawer(a.id, { preserveScroll: true });
           renderApps();
-          toast(`Статус оплаты: ${statusLabel(status)}`, "ok");
+          renderAnalytics();
+          toast("Статус «Оплачено» возвращён, причина записана в историю", "ok");
         } catch (err) {
-          toast(`Не удалось изменить статус: ${err.message}`, "err");
+          payRestore.disabled = false;
+          toast(`Не удалось: ${err.message}`, "err");
         }
       });
-    });
+    }
+    const payVerify = document.getElementById("pay-verify");
+    if (payVerify) {
+      payVerify.addEventListener("click", async () => {
+        payVerify.disabled = true;
+        payVerify.textContent = "Проверяем…";
+        try {
+          const res = await api(`/api/applications/${a.id}/verify-payment`, { method: "POST", body: "{}" });
+          if (res.item) Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps();
+          renderAnalytics();
+          toast(res.paid ? `ЮKassa подтверждает оплату${res.amount ? " · " + res.amount + " ₽" : ""}` : `ЮKassa: платёж не завершён (${res.reason || "нет оплаты"})`, res.paid ? "ok" : "err");
+        } catch (err) {
+          payVerify.disabled = false;
+          payVerify.textContent = "Проверить оплату в ЮKassa";
+          toast(`Не удалось проверить: ${err.message}`, "err");
+        }
+      });
+    }
 
     // Статус по категории
     el.drawerBody.querySelectorAll(".d-status-btn[data-cat-status]").forEach((btn) => {
@@ -1669,6 +1759,33 @@ ${PAY_LINK}
       if (osSaveBtn) osSaveBtn.hidden = !editing;
       if (osClearBtn) osClearBtn.hidden = !editing;
     };
+    const osAutosaveEl = document.getElementById("os-autosave");
+    let osAutosaveTimer = null;
+    const scheduleOsAutosave = () => {
+      if (!osEdit) return;
+      writeOsDraft(a.id, osEdit.value);
+      if (osAutosaveEl) osAutosaveEl.textContent = "Черновик сохранён на этом устройстве…";
+      clearTimeout(osAutosaveTimer);
+      osAutosaveTimer = setTimeout(async () => {
+        const text = osEdit.value;
+        try {
+          const res = await api(`/api/applications/${a.id}/feedback-text`, {
+            method: "POST",
+            body: JSON.stringify({ text }),
+          });
+          if (res?.item) {
+            a.feedbackText = res.item.feedbackText || text;
+            if (osView) osView.innerHTML = a.feedbackText ? esc(a.feedbackText) : "<span class='d-hint'>Пока пусто</span>";
+          }
+          if (osEdit.value === text) clearOsDraft(a.id);
+          if (osAutosaveEl) osAutosaveEl.textContent = `Сохранено на сервере · ${new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+        } catch {
+          if (osAutosaveEl) osAutosaveEl.textContent = "Нет связи — черновик хранится на устройстве, сохраним при следующей попытке";
+        }
+      }, 900);
+    };
+    if (osEdit) osEdit.addEventListener("input", scheduleOsAutosave);
+    if (osEditing && osEdit) scheduleOsAutosave();
     if (osEditBtn) {
       osEditBtn.addEventListener("click", () => {
         setOsMode(true);
@@ -1676,9 +1793,15 @@ ${PAY_LINK}
       });
     }
     if (osClearBtn) {
-      osClearBtn.addEventListener("click", () => {
+      osClearBtn.addEventListener("click", async () => {
+        const ok = await showConfirm({
+          title: "Удалить весь текст обратной связи?",
+          message: "Текст в поле будет очищен. Сохранится только после нажатия «Сохранить».",
+        });
+        if (!ok) return;
         if (osEdit) osEdit.value = "";
         osEdit?.focus();
+        scheduleOsAutosave();
       });
     }
     if (osCopyBtn) {
@@ -1696,12 +1819,15 @@ ${PAY_LINK}
     if (osSaveBtn) {
       osSaveBtn.addEventListener("click", async () => {
         osSaveBtn.disabled = true;
+        clearTimeout(osAutosaveTimer);
         try {
           const res = await api(`/api/applications/${a.id}/feedback-text`, {
             method: "POST",
             body: JSON.stringify({ text: osEdit ? osEdit.value : "" }),
           });
           Object.assign(a, res.item);
+          clearOsDraft(a.id);
+          if (osEdit) osEdit.hidden = true; // чтобы перерисовка не подхватила поле как «редактируется»
           openAppDrawer(a.id, { preserveScroll: true });
           renderApps();
           toast("Обратная связь сохранена", "ok");
@@ -1853,6 +1979,7 @@ ${PAY_LINK}
         msgEl.value = body;
         if (useTplWrap) useTplWrap.hidden = false;
         if (useTpl) useTpl.checked = true;
+        msgEl.dispatchEvent(new Event("input"));
         msgEl.focus();
         toast(a.feedbackText ? "Шаблон вставлен вместе с заметкой ОС" : "Шаблон вставлен — допишите обратную связь в заметке", "ok");
       });
@@ -1865,9 +1992,44 @@ ${PAY_LINK}
           if (subjEl) subjEl.value = replyTplState.prevSubject || "";
           if (msgEl) msgEl.value = replyTplState.prevBody || "";
           replyTplState.id = "";
+          if (msgEl) msgEl.dispatchEvent(new Event("input"));
           toast("Шаблон убран из письма", "ok");
         }
       });
+    }
+
+    // Черновик ручного письма живёт на устройстве, пока не отправлен.
+    const replyMsgEl = document.getElementById("reply-message");
+    const replySubjEl = document.getElementById("reply-subject");
+    if (replyMsgEl) {
+      const draftKey = `teni_reply_draft_${a.id}`;
+      try {
+        const saved = JSON.parse(localStorage.getItem(draftKey) || "null");
+        if (saved && (saved.body || "").trim()) {
+          replyMsgEl.value = saved.body || "";
+          if (replySubjEl && saved.subject) replySubjEl.value = saved.subject;
+          if (saved.tplId) {
+            replyTplState = { id: saved.tplId, prevSubject: "", prevBody: "" };
+            if (useTplWrap) useTplWrap.hidden = false;
+            if (useTpl) useTpl.checked = true;
+          }
+        }
+      } catch {}
+      const saveReplyDraft = () => {
+        try {
+          if (!replyMsgEl.value.trim() && !(replySubjEl?.value || "").trim()) {
+            localStorage.removeItem(draftKey);
+            return;
+          }
+          localStorage.setItem(draftKey, JSON.stringify({
+            subject: replySubjEl ? replySubjEl.value : "",
+            body: replyMsgEl.value,
+            tplId: replyTplState.id || "",
+          }));
+        } catch {}
+      };
+      replyMsgEl.addEventListener("input", saveReplyDraft);
+      if (replySubjEl) replySubjEl.addEventListener("input", saveReplyDraft);
     }
 
     // Ответ письмом
@@ -1894,6 +2056,7 @@ ${PAY_LINK}
             method: "POST", body: JSON.stringify({ subject, message, kind }),
           });
           Object.assign(a, res.item);
+          try { localStorage.removeItem(`teni_reply_draft_${a.id}`); } catch {}
           toast(`Письмо отправлено на ${a.email}`, "ok");
           openAppDrawer(a.id); // перерисуем с обновлённой историей (тост не пропадёт)
           renderApps();
@@ -2183,26 +2346,32 @@ ${PAY_LINK}
     bulkScheduleBtn.addEventListener("click", async () => {
       const atEl = document.getElementById("bulk-send-at");
       const at = localDateTimeToIso(atEl?.value || DEFAULT_BULK_SEND);
-      const eligible = (state.apps || []).filter((a) => {
+      const withOutcome = (state.apps || []).filter((a) => {
         if (a.scheduledSentAt) return false;
         return appCategories(a).some((c) => ["accepted", "reserve", "rejected"].includes(categoryStatus(a, c)));
       });
-      if (!eligible.length) {
+      const eligible = withOutcome.filter((a) => (a.feedbackText || "").trim());
+      const noOs = withOutcome.length - eligible.length;
+      if (!withOutcome.length) {
         toast("Нет заявок со статусом прошёл / резерв / не прошёл", "err");
+        return;
+      }
+      if (!eligible.length) {
+        toast(`У всех ${withOutcome.length} заявок с результатом пустая заметка ОС — сначала допишите обратную связь`, "err");
         return;
       }
       const ok = await showConfirm({
         title: "Поставить таймер рассылки?",
-        message: `Письма уйдут ${atEl?.value?.replace("T", " ") || "14.09 11:00"} по Москве. Заявок: ${eligible.length}. Статус «на рассмотрении» не трогаем.`,
+        message: `Письма уйдут ${atEl?.value?.replace("T", " ") || "14.09 11:00"} по Москве. Шаблон подбирается по статусу, заметка ОС вставляется сама. Заявок с ОС: ${eligible.length}.${noOs ? ` Без заметки ОС — ${noOs}, их пропустим (фильтр «ОС не предоставлена» покажет).` : ""} «На рассмотрении» не трогаем.`,
       });
       if (!ok) return;
       bulkScheduleBtn.disabled = true;
       try {
         const res = await api("/api/applications/schedule-bulk", {
           method: "POST",
-          body: JSON.stringify({ at, ids: eligible.map((x) => x.id) }),
+          body: JSON.stringify({ at, ids: eligible.map((x) => x.id), requireFeedback: true }),
         });
-        toast(`Таймер: ${res.scheduled} заявок, пропущено ${res.skipped}`, "ok");
+        toast(`Таймер поставлен: ${res.scheduled} заявок${res.skipped ? `, пропущено ${res.skipped}` : ""}${noOs ? `, без ОС осталось ${noOs}` : ""}`, "ok");
         await loadAll();
       } catch (err) {
         toast(`Не удалось поставить таймер: ${err.message}`, "err");
