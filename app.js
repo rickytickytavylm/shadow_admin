@@ -183,6 +183,8 @@ ${PAY_LINK}
     appsSummaryPrices: document.getElementById("apps-summary-prices"),
     deletedArchiveList: document.getElementById("deleted-archive-list"),
     deletedArchiveEmpty: document.getElementById("deleted-archive-empty"),
+    feeUnpaidArchiveList: document.getElementById("fee-unpaid-archive-list"),
+    feeUnpaidArchiveEmpty: document.getElementById("fee-unpaid-archive-empty"),
     chatsList: document.getElementById("chats-list"),
     chatsEmpty: document.getElementById("chats-empty"),
     chatsSearch: document.getElementById("chats-search"),
@@ -515,6 +517,10 @@ ${PAY_LINK}
     return !cat || appCategories(a).includes(cat) || a.category === cat;
   }
 
+  function isFeeUnpaid(a) {
+    return a.feeStatus !== "paid" && a.status !== "awaiting_payment" && payableCategories(a).length > 0;
+  }
+
   // Совпадает ли заявка со статусом.
   // Если выбрана категория (scopedCategory) — статус смотрим ТОЛЬКО в ней
   // (иначе Ева Винтер с «Тень·Отклонена» + «Соло·Прошёл» попадала в оба фильтра).
@@ -522,7 +528,14 @@ ${PAY_LINK}
     if (!value) return true;
     if (value === "paid") return isPaid(a);
     if (value === "awaiting_payment") return a.status === "awaiting_payment" && !isPaid(a);
+    if (value === "fee_paid") return a.feeStatus === "paid";
+    if (value === "fee_unpaid") {
+      if (!isFeeUnpaid(a)) return false;
+      if (scopedCategory) return payableCategories(a).includes(scopedCategory);
+      return true;
+    }
     if (WORKFLOW_STATUSES.includes(value)) {
+      if (!isPaid(a)) return false;
       if (scopedCategory) {
         return hasCategory(a, scopedCategory) && categoryStatus(a, scopedCategory) === value;
       }
@@ -593,10 +606,14 @@ ${PAY_LINK}
       if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent.replace(/\s*\(\d+\)$/, "");
       // Счётчик статуса в разрезе выбранной категории
       let n;
-      if (!cat && WORKFLOW_STATUSES.includes(opt.value)) {
-        // Общий workflow-счётчик — это количество категорий, а не карточек.
-        // Одна заявка, прошедшая в двух категориях, должна дать +2.
-        n = apps.reduce((total, a) => total + appCategories(a)
+      if (opt.value === "fee_paid" || opt.value === "fee_unpaid") {
+        n = apps.filter((a) => {
+          if (cat && !hasCategory(a, cat)) return false;
+          return matchesStatus(a, opt.value, cat);
+        }).length;
+      } else if (!cat && WORKFLOW_STATUSES.includes(opt.value)) {
+        // Слоты категорий, только у оплативших видеоотбор.
+        n = apps.filter(isPaid).reduce((total, a) => total + appCategories(a)
           .filter((c) => categoryStatus(a, c) === opt.value).length, 0);
       } else {
         n = apps.filter((a) => {
@@ -641,6 +658,7 @@ ${PAY_LINK}
       if (cat && !hasCategory(a, cat)) return false;
       // В разрезе категории показываем только оплаченные (если выбран статус «все» или «оплачено»).
       if (cat && (!st || st === "paid") && !isPaid(a)) return false;
+      if (WORKFLOW_STATUSES.includes(st) && !isPaid(a)) return false;
       // Статус + категория = AND внутри этой категории
       if (!matchesStatus(a, st, cat)) return false;
       if (promo && (a.promoCode || "").toUpperCase() !== promo) return false;
@@ -787,7 +805,14 @@ ${PAY_LINK}
       if (c === "shadow" && a.shadowType) {
         extra = a.shadowType === "solo" ? " · соло" : (a.shadowType === "duet" ? " · дуэт" : (a.shadowType === "group" ? " · группы" : ""));
       }
-      return `<span class="chip chip-cat">${esc(catLabel(c))}${extra}${showSt ? " · " + esc(statusLabel(st)) : ""}</span>`;
+      let feeMark = "";
+      if (c === "battle") feeMark = " · позже";
+      else if (st === "accepted") {
+        if (a.feeStatus === "paid") feeMark = " · взнос ✓";
+        else if (a.feeStatus === "awaiting_payment") feeMark = " · взнос…";
+        else feeMark = " · взнос —";
+      }
+      return `<span class="chip chip-cat">${esc(catLabel(c))}${extra}${showSt ? " · " + esc(statusLabel(st)) : ""}${feeMark}</span>`;
     }).join("");
     return `
       <div class="app-card-top">
@@ -1612,21 +1637,28 @@ ${PAY_LINK}
         return box(CATEGORY_LABELS[key], n);
       }).join("");
     }
-    // Прошёл отбор — считаем категории, не заявки
+    // Прошёл отбор: заявки, люди (уникальная почта) и слоты категорий — разные числа.
     let acceptedTotal = 0;
     const acceptedByCat = {};
+    const acceptedApps = [];
     for (const a of paid) {
+      let hit = false;
       for (const c of appCategories(a)) {
         if (categoryStatus(a, c) === "accepted") {
           acceptedTotal += 1;
           acceptedByCat[c] = (acceptedByCat[c] || 0) + 1;
+          hit = true;
         }
       }
+      if (hit) acceptedApps.push(a);
     }
+    const acceptedPeople = new Set(acceptedApps.map((a) => (a.email || "").trim().toLowerCase()).filter(Boolean)).size;
     if (el.appsSummaryAccepted) {
       el.appsSummaryAccepted.innerHTML =
-        box("Всего «прошёл»", acceptedTotal) +
-        Object.keys(CATEGORY_LABELS).map((key) => box(CATEGORY_LABELS[key], acceptedByCat[key] || 0)).join("");
+        box("Заявок с «прошёл»", acceptedApps.length) +
+        box("Людей", acceptedPeople) +
+        box("Категорий «прошёл»", acceptedTotal) +
+        Object.keys(CATEGORY_LABELS).map((key) => box(CATEGORY_LABELS[key] + " · кат.", acceptedByCat[key] || 0)).join("");
     }
     // Разбивка по суммам оплаты
     const byPrice = {};
@@ -1643,17 +1675,21 @@ ${PAY_LINK}
     const feesSummary = document.getElementById("fees-summary-stats");
     if (feesSummary) {
       const feePaid = apps.filter((a) => a.feeStatus === "paid");
+      const feeUnpaidList = apps.filter(isFeeUnpaid);
       const feeRevenue = feePaid.reduce((s, a) => s + (Number(a.feeAmount) || 0), 0);
-      const feeUnpaid = apps.filter((a) => a.feeStatus !== "paid" && a.status !== "awaiting_payment" && payableCategories(a).length).length;
       const feeByCat = {};
       feePaid.forEach((a) => (a.feeCategories || []).forEach((c) => { feeByCat[c] = (feeByCat[c] || 0) + 1; }));
       const feeByPromo = {};
       feePaid.forEach((a) => { if (a.feePromo) feeByPromo[a.feePromo] = (feeByPromo[a.feePromo] || 0) + 1; });
+      const feePaidPeople = new Set(feePaid.map((a) => (a.email || "").trim().toLowerCase()).filter(Boolean)).size;
+      const feeUnpaidPeople = new Set(feeUnpaidList.map((a) => (a.email || "").trim().toLowerCase()).filter(Boolean)).size;
       feesSummary.innerHTML =
-        box("Оплатили взнос", feePaid.length) +
+        box("Заявок оплатили", feePaid.length) +
+        box("Людей оплатили", feePaidPeople) +
         `<div class="stat-box"><span class="stat-val">${feeRevenue.toLocaleString("ru-RU")}</span><span class="stat-label">Сумма взносов, ₽</span></div>` +
-        box("Прошли, не оплатили", feeUnpaid) +
-        Object.keys(CATEGORY_LABELS).filter((k) => feeByCat[k]).map((k) => box(CATEGORY_LABELS[k], feeByCat[k])).join("") +
+        box("Заявок не оплатили", feeUnpaidList.length) +
+        box("Людей не оплатили", feeUnpaidPeople) +
+        Object.keys(CATEGORY_LABELS).filter((k) => feeByCat[k]).map((k) => box(CATEGORY_LABELS[k] + " · кат.", feeByCat[k])).join("") +
         Object.entries(feeByPromo).map(([p, n]) => box(p, n)).join("");
     }
     if (el.ticketsSummaryStats) {
@@ -1665,6 +1701,34 @@ ${PAY_LINK}
         box("0 ₽", tb.p0) +
         box("KRISBRO", tb.kris) +
         box("SEEYOUSOON", tb.see);
+    }
+    if (el.feeUnpaidArchiveList) {
+      const unpaid = (state.apps || []).filter(isFeeUnpaid)
+        .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || "", "ru"));
+      el.feeUnpaidArchiveList.innerHTML = "";
+      if (el.feeUnpaidArchiveEmpty) el.feeUnpaidArchiveEmpty.hidden = unpaid.length > 0;
+      const frag = document.createDocumentFragment();
+      for (const a of unpaid) {
+        const cats = payableCategories(a).map((c) => `${catLabel(c)} — не оплачен`).concat(
+          laterCategories(a).map((c) => `${catLabel(c)} — позже`)
+        ).join(", ");
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "chat-card";
+        card.addEventListener("click", () => openAppFromList(a.id));
+        card.innerHTML = `
+          <div class="chat-card-top">
+            <span class="chip chip-muted">Взнос не оплачен</span>
+            <span class="chat-card-id">${esc(fmtDate(a.createdAt))}</span>
+          </div>
+          <div class="app-card-name">${esc(a.fullName || "—")}</div>
+          <div class="chat-card-preview">${esc(cats || "—")}</div>
+          <div class="chat-card-meta">
+            <span>${esc(a.email || "—")}${a.phone ? " · " + esc(a.phone) : ""}${a.paidAmount ? " · видеоотбор " + esc(a.paidAmount) + " ₽" : ""}</span>
+          </div>`;
+        frag.appendChild(card);
+      }
+      el.feeUnpaidArchiveList.appendChild(frag);
     }
     // Архив удалённых оплаченных
     if (el.deletedArchiveList) {
