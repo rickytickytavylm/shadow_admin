@@ -155,6 +155,15 @@ ${PAY_LINK}
     ticketsPromoFilter: document.getElementById("tickets-promo-filter"),
     ticketsStats: document.getElementById("tickets-stats"),
     ticketsSummaryStats: document.getElementById("tickets-summary-stats"),
+    tabFeesCount: document.getElementById("tab-fees-count"),
+    viewFees: document.getElementById("view-fees"),
+    feesList: document.getElementById("fees-list"),
+    feesEmpty: document.getElementById("fees-empty"),
+    feesSearch: document.getElementById("fees-search"),
+    feesStatusFilter: document.getElementById("fees-status-filter"),
+    feesCategoryFilter: document.getElementById("fees-category-filter"),
+    feesPromoFilter: document.getElementById("fees-promo-filter"),
+    feesStats: document.getElementById("fees-stats"),
     analyticsList: document.getElementById("analytics-list"),
     analyticsEmpty: document.getElementById("analytics-empty"),
     analyticsStats: document.getElementById("analytics-stats"),
@@ -408,6 +417,7 @@ ${PAY_LINK}
       renderChats();
       renderSponsors();
       renderTickets();
+      renderFees();
       renderShowLeads();
       renderAnalytics();
       refreshOpenDrawer({ preserveScroll: true });
@@ -630,6 +640,8 @@ ${PAY_LINK}
       if (extra === "has_messages" && !hasRealCorrespondence(a)) return false;
       if (extra === "os_yes" && !a.feedbackGiven) return false;
       if (extra === "os_no" && a.feedbackGiven) return false;
+      if (extra === "fee_paid" && a.feeStatus !== "paid") return false;
+      if (extra === "fee_unpaid" && (a.feeStatus === "paid" || !acceptedCategories(a).length)) return false;
       if (q) {
         const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city} ${a.promoCode || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -766,7 +778,178 @@ ${PAY_LINK}
         ${a.feedbackText ? `<span class="chip chip-muted">заметка ОС</span>` : ""}
         ${a.scheduledSendAt && !a.scheduledSentAt ? `<span class="chip chip-muted">⏰ ${esc(fmtDate(a.scheduledSendAt))}</span>` : ""}
         ${a.promoCode ? `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>` : ""}
+        ${feeChipHtml(a)}
       </div>`;
+  }
+
+  // ── Взнос за участие ──
+  const FEE_PRICES = { solo: 10000, battle: 9000, duet: 7000, team: 4500 };
+  const FEE_LABELS = { paid: "Взнос оплачен", awaiting_payment: "Взнос: начал оплату" };
+
+  function acceptedCategories(a) {
+    return appCategories(a).filter((c) => categoryStatus(a, c) === "accepted");
+  }
+  function feeKind(a, cat) {
+    if (cat === "battle") return "battle";
+    if (cat === "duet") return "duet";
+    if (cat === "team") return "team";
+    if (cat === "shadow") return a.shadowType === "duet" ? "duet" : (a.shadowType === "group" ? "team" : "solo");
+    return "solo";
+  }
+  // Ожидаемая сумма взноса без промокода (для команд — за одного человека, точное число неизвестно).
+  function feeExpected(a) {
+    return acceptedCategories(a).reduce((s, c) => {
+      const k = feeKind(a, c);
+      const people = k === "duet" ? 2 : 1;
+      return s + FEE_PRICES[k] * people;
+    }, 0);
+  }
+  function feeChipHtml(a) {
+    if (a.feeStatus === "paid") {
+      return `<span class="chip st-paid"><span class="status-dot"></span>Взнос ${esc((Number(a.feeAmount) || 0).toLocaleString("ru-RU"))} ₽${a.feePromo ? " · " + esc(a.feePromo) : ""}</span>`;
+    }
+    if (a.feeStatus === "awaiting_payment") {
+      return `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Взнос: начал оплату</span>`;
+    }
+    if (acceptedCategories(a).length && a.status !== "awaiting_payment") {
+      return `<span class="chip chip-muted">Взнос не оплачен</span>`;
+    }
+    return "";
+  }
+  function fmtRub(n) { return `${(Number(n) || 0).toLocaleString("ru-RU")} ₽`; }
+
+  function feeCandidates() {
+    return (state.apps || []).filter((a) => a.feeStatus === "paid" || (a.status !== "awaiting_payment" && acceptedCategories(a).length));
+  }
+
+  function filteredFees() {
+    const q = (el.feesSearch?.value || "").trim().toLowerCase();
+    const st = el.feesStatusFilter ? el.feesStatusFilter.value : "paid";
+    const cat = el.feesCategoryFilter ? el.feesCategoryFilter.value : "";
+    const promo = el.feesPromoFilter ? el.feesPromoFilter.value : "";
+    return feeCandidates()
+      .filter((a) => {
+        if (st === "paid") return a.feeStatus === "paid";
+        if (st === "awaiting_payment") return a.feeStatus === "awaiting_payment";
+        if (st === "unpaid") return a.feeStatus !== "paid";
+        return true;
+      })
+      .filter((a) => !cat || (a.feeStatus === "paid" ? (a.feeCategories || []).includes(cat) : acceptedCategories(a).includes(cat)))
+      .filter((a) => {
+        if (!promo) return true;
+        const code = (a.feePromo || "").toUpperCase();
+        if (promo === "__none__") return !code;
+        return code === promo;
+      })
+      .filter((a) => !q || `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.feePromo || ""}`.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const ka = a.feePaidAt || a.feeCreatedAt || a.createdAt || "";
+        const kb = b.feePaidAt || b.feeCreatedAt || b.createdAt || "";
+        return ka < kb ? 1 : -1;
+      });
+  }
+
+  function fillFeesCategoryFilter() {
+    if (!el.feesCategoryFilter) return;
+    const current = el.feesCategoryFilter.value;
+    const cats = new Set();
+    feeCandidates().forEach((a) => {
+      (a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a)).forEach((c) => cats.add(c));
+    });
+    el.feesCategoryFilter.innerHTML = `<option value="">Все категории</option>` +
+      [...cats].sort().map((c) => `<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join("");
+    if ([...cats].includes(current)) el.feesCategoryFilter.value = current;
+  }
+
+  function renderFees() {
+    if (!el.feesList) return;
+    fillFeesCategoryFilter();
+    const all = feeCandidates();
+    const paid = all.filter((a) => a.feeStatus === "paid");
+    const revenue = paid.reduce((s, a) => s + (Number(a.feeAmount) || 0), 0);
+    const started = all.filter((a) => a.feeStatus === "awaiting_payment").length;
+    const unpaid = all.filter((a) => a.feeStatus !== "paid").length;
+    const expectedUnpaid = all.filter((a) => a.feeStatus !== "paid").reduce((s, a) => s + feeExpected(a), 0);
+    const byCat = {};
+    paid.forEach((a) => (a.feeCategories || []).forEach((c) => { byCat[c] = (byCat[c] || 0) + 1; }));
+    const byPromo = {};
+    paid.forEach((a) => { if (a.feePromo) byPromo[a.feePromo] = (byPromo[a.feePromo] || 0) + 1; });
+    const box = (label, val) => `<div class="stat-box"><span class="stat-val">${val}</span><span class="stat-label">${label}</span></div>`;
+    if (el.feesStats) {
+      el.feesStats.innerHTML =
+        box("Оплатили взнос", paid.length) +
+        box("Сумма, ₽", revenue.toLocaleString("ru-RU")) +
+        box("Прошли, не оплатили", unpaid) +
+        box("Начали, не завершили", started) +
+        box("Ожидается, ₽ (без промо)", expectedUnpaid.toLocaleString("ru-RU")) +
+        Object.entries(byCat).sort((x, y) => y[1] - x[1]).map(([c, n]) => box(catLabel(c), n)).join("") +
+        Object.entries(byPromo).map(([p, n]) => box(p, n)).join("");
+    }
+    setBadge(el.tabFeesCount, paid.length);
+    const items = filteredFees();
+    el.feesList.innerHTML = "";
+    if (el.feesEmpty) {
+      el.feesEmpty.hidden = items.length > 0;
+      el.feesEmpty.textContent = "По этому фильтру взносов нет.";
+    }
+    const frag = document.createDocumentFragment();
+    for (const a of items) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "chat-card";
+      card.addEventListener("click", () => openAppFromList(a.id));
+      const cats = a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a);
+      const chip = a.feeStatus === "paid"
+        ? `<span class="chip st-paid">Оплачен · ${esc(fmtRub(a.feeAmount))}</span>`
+        : (a.feeStatus === "awaiting_payment"
+          ? `<span class="chip st-awaiting_payment">Начал оплату</span>`
+          : `<span class="chip chip-muted">Не оплачен · ожидается ~${esc(fmtRub(feeExpected(a)))}</span>`);
+      card.innerHTML = `
+        <div class="chat-card-top">
+          ${chip}
+          <span class="chat-card-id">${esc(fmtDate(a.feePaidAt || a.feeCreatedAt || a.createdAt))}</span>
+        </div>
+        <div class="app-card-name">${esc(a.fullName || "—")}</div>
+        <div class="chat-card-preview">${esc(cats.map(catLabel).join(", ") || "—")}${a.feeParticipants > 1 ? ` · ${a.feeParticipants} чел.` : ""}${a.feePromo ? " · 🎟 " + esc(a.feePromo) : ""}</div>
+        <div class="chat-card-meta"><span>${esc(a.phone || "—")}${a.email ? " · " + esc(a.email) : ""}</span></div>`;
+      frag.appendChild(card);
+    }
+    el.feesList.appendChild(frag);
+  }
+
+  async function exportFeesExcel(btn) {
+    const items = filteredFees();
+    if (!items.length) { toast("Нет данных для экспорта", "err"); return; }
+    const label = btn ? btn.querySelector("span") : null;
+    const prev = label ? label.textContent : "";
+    if (btn) { btn.disabled = true; if (label) label.textContent = "Готовим…"; }
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      const rows = items.map((a) => ({
+        "Дата оплаты": a.feePaidAt ? fmtDate(a.feePaidAt) : "",
+        "ФИО": a.fullName || "",
+        "Email": a.email || "",
+        "Телефон": a.phone || "",
+        "Telegram": a.telegram || "",
+        "Категории (взнос)": (a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a)).map(catLabel).join(", "),
+        "Участников": a.feeParticipants || "",
+        "Статус взноса": a.feeStatus === "paid" ? "Оплачен" : (a.feeStatus === "awaiting_payment" ? "Начал оплату" : "Не оплачен"),
+        "Сумма, ₽": a.feeStatus === "paid" ? (Number(a.feeAmount) || 0) : "",
+        "Ожидается, ₽": a.feeStatus !== "paid" ? feeExpected(a) : "",
+        "Промокод": a.feePromo || "",
+        "ID платежа": a.feePaymentId || "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [17, 26, 26, 16, 16, 30, 10, 16, 12, 14, 14, 30].map((wch) => ({ wch }));
+      if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Взносы");
+      XLSX.writeFile(wb, `teni-vznosy-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (err) {
+      toast(`Не удалось выгрузить: ${err.message}`, "err");
+    } finally {
+      if (btn) { btn.disabled = false; if (label) label.textContent = prev; }
+    }
   }
 
   function updateInboxAlert() {
@@ -864,10 +1047,14 @@ ${PAY_LINK}
           "Видео": a.videoUrl || "",
           "Сообщений": realCorrespondenceMessages(a).length,
           "ID платежа": a.paymentId || "",
+          "Взнос": a.feeStatus === "paid" ? "Оплачен" : (a.feeStatus === "awaiting_payment" ? "Начал оплату" : (acceptedCategories(a).length ? "Не оплачен" : "")),
+          "Сумма взноса, ₽": a.feeStatus === "paid" ? (Number(a.feeAmount) || 0) : "",
+          "Промокод взноса": a.feePromo || "",
+          "Дата взноса": a.feePaidAt ? fmtDate(a.feePaidAt) : "",
         };
       });
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 12, 14, 40, 12, 10, 32, 11, 24].map((wch) => ({ wch }));
+      ws["!cols"] = [17, 24, 26, 15, 16, 16, 14, 10, 10, 28, 16, 10, 10, 12, 14, 40, 12, 10, 32, 11, 24, 14, 14, 14, 17].map((wch) => ({ wch }));
       if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Заявки");
@@ -1235,6 +1422,22 @@ ${PAY_LINK}
         ? keys.map((amt) => box(`${amt.toLocaleString("ru-RU")} ₽`, byPrice[amt])).join("")
         : box("Нет данных", 0);
     }
+    const feesSummary = document.getElementById("fees-summary-stats");
+    if (feesSummary) {
+      const feePaid = apps.filter((a) => a.feeStatus === "paid");
+      const feeRevenue = feePaid.reduce((s, a) => s + (Number(a.feeAmount) || 0), 0);
+      const feeUnpaid = apps.filter((a) => a.feeStatus !== "paid" && a.status !== "awaiting_payment" && acceptedCategories(a).length).length;
+      const feeByCat = {};
+      feePaid.forEach((a) => (a.feeCategories || []).forEach((c) => { feeByCat[c] = (feeByCat[c] || 0) + 1; }));
+      const feeByPromo = {};
+      feePaid.forEach((a) => { if (a.feePromo) feeByPromo[a.feePromo] = (feeByPromo[a.feePromo] || 0) + 1; });
+      feesSummary.innerHTML =
+        box("Оплатили взнос", feePaid.length) +
+        `<div class="stat-box"><span class="stat-val">${feeRevenue.toLocaleString("ru-RU")}</span><span class="stat-label">Сумма взносов, ₽</span></div>` +
+        box("Прошли, не оплатили", feeUnpaid) +
+        Object.keys(CATEGORY_LABELS).filter((k) => feeByCat[k]).map((k) => box(CATEGORY_LABELS[k], feeByCat[k])).join("") +
+        Object.entries(feeByPromo).map(([p, n]) => box(p, n)).join("");
+    }
     if (el.ticketsSummaryStats) {
       const tb = ticketPriceBuckets();
       el.ticketsSummaryStats.innerHTML =
@@ -1450,6 +1653,35 @@ ${PAY_LINK}
     });
   }
 
+  // Старые записи автописьма хранят только пометку «отправлено». Показываем
+  // полный текст письма, как его получил участник.
+  function expandAutoMessageText(m, a) {
+    const t = String(m.text || "");
+    if (!t.startsWith("Автоматическое письмо-подтверждение")) return t;
+    const cats = appCategories(a).map(catLabel).join(", ") || "—";
+    return [
+      "Спасибо, что подали заявку на видеоотбор чемпионата «Тень»!",
+      "",
+      `Выбранные категории: ${cats}`,
+      "",
+      "До 14 сентября вы получите обратную связь по итогам видеоотбора от Кристины Бродецкой.",
+      "",
+      "14 сентября будут опубликованы списки участников, прошедших видеоотбор.",
+      "",
+      "Если вы прошли отбор, у вас будет 7 дней, чтобы оплатить основной взнос участника и закрепить за собой место!",
+      "",
+      "Если захотите подать заявку ещё в одну категорию до 7 сентября 2026 года, просто ответьте на это письмо и напишите, какую категорию хотите добавить.",
+      "",
+      "Приглашайте друзей и близких поддержать вас на чемпионате — зрители станут важной частью атмосферы «Тени».",
+      "",
+      "Следите за новостями:",
+      "Telegram: @teni_champ",
+      "Instagram (запрещённая сеть): @teni_championship",
+      "",
+      "Команда чемпионата «ТЕНЬ»",
+    ].join("\n");
+  }
+
   // Итог отбора для письма: прошёл > резерв > не прошёл (как на сервере).
   function selectionOutcomeClient(a) {
     const sts = appCategories(a).map((c) => categoryStatus(a, c));
@@ -1494,11 +1726,12 @@ ${PAY_LINK}
 
     const msgs = Array.isArray(a.messages) ? a.messages : [];
     const convoHtml = msgs.length
-      ? `<div class="transcript">${msgs.map((m) => {
+      ? `<div class="transcript transcript--scroll" id="app-transcript">${msgs.map((m) => {
           const incoming = m.direction === "in";
+          const text = expandAutoMessageText(m, a);
           return `<div class="msg msg-${incoming ? "bot" : "user"}">
-            ${m.subject ? `<div class="msg-subj">${esc(m.subject)}</div>` : ""}${esc(m.text)}
-            <span class="msg-time">${incoming ? "участник" : "мы"} · ${esc(fmtDate(m.at))}</span>
+            ${m.subject ? `<div class="msg-subj">${esc(m.subject)}</div>` : ""}${esc(text)}
+            <span class="msg-time">${incoming ? "участник" : (m.kind === "auto" ? "автописьмо" : (m.kind === "template" ? "шаблон" : "мы"))} · ${esc(fmtDate(m.at))}</span>
           </div>`;
         }).join("")}</div>`
       : `<p class="reply-hint">Переписки пока нет.</p>`;
@@ -1510,7 +1743,9 @@ ${PAY_LINK}
     if (Number(a.paidAmount) > 0) paidEvidence.push(`сумма ${a.paidAmount} ₽`);
     if (a.promoCode) paidEvidence.push(`промокод ${a.promoCode}`);
     const payHistory = (Array.isArray(a.editHistory) ? a.editHistory : [])
-      .filter((h) => h?.patch && (h.patch.status || h.patch.from));
+      .filter((h) => h?.patch && (h.patch.status || h.patch.from) && !("feeStatus" in h.patch));
+    const feeHistory = (Array.isArray(a.editHistory) ? a.editHistory : [])
+      .filter((h) => h?.patch && ("feeStatus" in h.patch));
 
     // Категории — массив или fallback на одну
     const cats = appCategories(a);
@@ -1595,6 +1830,28 @@ ${PAY_LINK}
           ${a.paymentId ? `<button type="button" class="btn btn-ghost" id="pay-verify">Проверить оплату в ЮKassa</button>` : ""}
           <button type="button" class="btn btn-ghost" id="pay-restore">Вернуть «Оплачено»${paidEvidence.length ? " · " + esc(paidEvidence.join(", ")) : ""}</button>
         </div>` : ""}
+
+      ${(acceptedCategories(a).length || a.feeStatus) ? `
+      <div class="d-section-title">Взнос за участие</div>
+      <dl class="d-grid">
+        ${row("Статус", a.feeStatus === "paid"
+          ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачен</span>`
+          : (a.feeStatus === "awaiting_payment"
+            ? `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Начал оплату, не завершил</span>`
+            : `<span class="chip chip-muted">Не оплачен</span>`))}
+        ${row("Категории", esc((a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a)).map(catLabel).join(", ") || "—"))}
+        ${a.feeStatus === "paid" ? row("Сумма", esc(fmtRub(a.feeAmount))) : row("Ожидается", esc(fmtRub(feeExpected(a))) + (acceptedCategories(a).some((c) => feeKind(a, c) === "team") ? " × чел." : "") + " без промо")}
+        ${a.feeParticipants ? row("Участников", esc(String(a.feeParticipants))) : ""}
+        ${a.feePromo ? row("Промокод", `<span class="chip chip-promo">🎟 ${esc(a.feePromo)}</span>`) : ""}
+        ${a.feePaidAt ? row("Дата оплаты", esc(fmtDate(a.feePaidAt))) : ""}
+        ${a.feePaymentId ? row("ID платежа", `<span class="mono">${esc(a.feePaymentId)}</span>`) : ""}
+        ${feeHistory.length ? row("История", feeHistory.map((h) => `${esc(fmtDate(h.at))} — ${esc(h.comment || "")}`).join("<br>")) : ""}
+      </dl>
+      <div class="os-note-actions">
+        ${a.feeStatus !== "paid" ? `<button type="button" class="btn btn-ghost" id="fee-mark-paid">Отметить взнос оплаченным</button>` : ""}
+        ${a.feePaymentId ? `<button type="button" class="btn btn-ghost" id="fee-verify">Проверить взнос в ЮKassa</button>` : ""}
+        ${a.feeStatus === "paid" ? `<button type="button" class="btn btn-ghost" id="fee-reset">Снять отметку взноса</button>` : ""}
+      </div>` : ""}
 
       <div class="d-section-title">Категории</div>
       <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px">${catsHtml || "—"}</div>
@@ -1724,6 +1981,10 @@ ${PAY_LINK}
       </details>
     `, { preserveScroll });
 
+    // Переписка: последние письма внизу на виду, старые листаются вверх.
+    const transcriptEl = document.getElementById("app-transcript");
+    if (transcriptEl) transcriptEl.scrollTop = transcriptEl.scrollHeight;
+
     // Возврат «Оплачено» после ошибочного переключения — только с причиной в историю.
     const payRestore = document.getElementById("pay-restore");
     if (payRestore) {
@@ -1763,6 +2024,75 @@ ${PAY_LINK}
           payVerify.disabled = false;
           payVerify.textContent = "Проверить оплату в ЮKassa";
           toast(`Не удалось проверить: ${err.message}`, "err");
+        }
+      });
+    }
+
+    // ── Взнос за участие: ручная отметка / сверка / снятие ──
+    const feeMark = document.getElementById("fee-mark-paid");
+    if (feeMark) {
+      feeMark.addEventListener("click", async () => {
+        const amountRaw = window.prompt("Сумма взноса, ₽ (0 — если оплачено вне сайта по промокоду ALREADYPAID):", String(feeExpected(a) || 0));
+        if (amountRaw === null) return;
+        const amount = Number(String(amountRaw).replace(/[^\d]/g, ""));
+        if (!Number.isFinite(amount)) { toast("Введите число", "err"); return; }
+        const promo = window.prompt("Промокод (если был), иначе оставьте пустым:", amount === 0 ? "ALREADYPAID" : "");
+        if (promo === null) return;
+        const reason = window.prompt("Причина ручной отметки (попадёт в историю):", "Оплата переводом на карту, подтверждена");
+        if (reason === null) return;
+        if (reason.trim().length < 3) { toast("Укажите причину", "err"); return; }
+        feeMark.disabled = true;
+        try {
+          const res = await api(`/api/applications/${a.id}/fee-paid`, {
+            method: "POST",
+            body: JSON.stringify({ amount, promoCode: promo.trim(), editComment: reason.trim() }),
+          });
+          Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps(); renderFees(); renderAnalytics();
+          toast("Взнос отмечен оплаченным", "ok");
+        } catch (err) {
+          feeMark.disabled = false;
+          toast(`Не удалось: ${err.message}`, "err");
+        }
+      });
+    }
+    const feeVerify = document.getElementById("fee-verify");
+    if (feeVerify) {
+      feeVerify.addEventListener("click", async () => {
+        feeVerify.disabled = true;
+        feeVerify.textContent = "Проверяем…";
+        try {
+          const res = await api(`/api/applications/${a.id}/fee-verify`, { method: "POST", body: "{}" });
+          if (res.item) Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps(); renderFees(); renderAnalytics();
+          toast(res.paid ? "ЮKassa подтверждает оплату взноса" : `ЮKassa: платёж не завершён (${res.reason || "нет оплаты"})`, res.paid ? "ok" : "err");
+        } catch (err) {
+          feeVerify.disabled = false;
+          feeVerify.textContent = "Проверить взнос в ЮKassa";
+          toast(`Не удалось проверить: ${err.message}`, "err");
+        }
+      });
+    }
+    const feeReset = document.getElementById("fee-reset");
+    if (feeReset) {
+      feeReset.addEventListener("click", async () => {
+        const reason = window.prompt("Почему снимаем отметку взноса? Причина попадёт в историю.", "");
+        if (reason === null) return;
+        if (reason.trim().length < 3) { toast("Укажите причину", "err"); return; }
+        feeReset.disabled = true;
+        try {
+          const res = await api(`/api/applications/${a.id}/fee-reset`, {
+            method: "POST", body: JSON.stringify({ editComment: reason.trim() }),
+          });
+          Object.assign(a, res.item);
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps(); renderFees(); renderAnalytics();
+          toast("Отметка взноса снята", "ok");
+        } catch (err) {
+          feeReset.disabled = false;
+          toast(`Не удалось: ${err.message}`, "err");
         }
       });
     }
@@ -2329,7 +2659,8 @@ ${PAY_LINK}
     el.tabbarBtns.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === tab));
     el.viewApps.hidden = tab !== "apps";
     el.viewChats.hidden = tab !== "chats";
-    el.viewSponsors.hidden = tab !== "sponsors";
+    if (el.viewSponsors) el.viewSponsors.hidden = tab !== "sponsors";
+    if (el.viewFees) el.viewFees.hidden = tab !== "fees";
     if (el.viewTickets) el.viewTickets.hidden = tab !== "tickets";
     if (el.viewShow) el.viewShow.hidden = tab !== "show";
     if (el.viewAnalytics) el.viewAnalytics.hidden = tab !== "analytics";
@@ -2461,6 +2792,12 @@ ${PAY_LINK}
   if (el.ticketsPromoFilter) el.ticketsPromoFilter.addEventListener("change", renderTickets);
   const exportTicketsBtn = document.getElementById("export-tickets");
   if (exportTicketsBtn) exportTicketsBtn.addEventListener("click", () => exportTicketsExcel(exportTicketsBtn));
+  if (el.feesSearch) el.feesSearch.addEventListener("input", renderFees);
+  if (el.feesStatusFilter) el.feesStatusFilter.addEventListener("change", renderFees);
+  if (el.feesCategoryFilter) el.feesCategoryFilter.addEventListener("change", renderFees);
+  if (el.feesPromoFilter) el.feesPromoFilter.addEventListener("change", renderFees);
+  const exportFeesBtn = document.getElementById("export-fees");
+  if (exportFeesBtn) exportFeesBtn.addEventListener("click", () => exportFeesExcel(exportFeesBtn));
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);
   el.alertCancel.addEventListener("click", () => closeAlert(false));
