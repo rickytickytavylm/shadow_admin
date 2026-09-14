@@ -647,10 +647,10 @@ ${PAY_LINK}
       if (extra === "os_yes" && !a.feedbackGiven) return false;
       if (extra === "os_no" && a.feedbackGiven) return false;
       if (extra === "fee_paid" && a.feeStatus !== "paid") return false;
-      if (extra === "fee_unpaid" && (a.feeStatus === "paid" || !acceptedCategories(a).length)) return false;
+      if (extra === "fee_unpaid" && (a.feeStatus === "paid" || !payableCategories(a).length)) return false;
       if (extra === "form_yes" && !formsSubmitted(a).length) return false;
-      if (extra === "form_no" && (!acceptedCategories(a).length || formsSubmitted(a).length >= acceptedCategories(a).length)) return false;
-      if (extra === "fee_form_no" && (!acceptedCategories(a).length || (a.feeStatus === "paid" && formsSubmitted(a).length >= acceptedCategories(a).length))) return false;
+      if (extra === "form_no" && (!payableCategories(a).length || formsSubmitted(a).length >= payableCategories(a).length)) return false;
+      if (extra === "fee_form_no" && (!payableCategories(a).length || (a.feeStatus === "paid" && formsSubmitted(a).length >= payableCategories(a).length))) return false;
       if (q) {
         const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city} ${a.promoCode || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -796,7 +796,7 @@ ${PAY_LINK}
   function formsOf(a) { return (state.forms || []).filter((f) => f.applicationId === a.id); }
   function formsSubmitted(a) { return formsOf(a).filter((f) => f.status === "submitted"); }
   function formChipHtml(a) {
-    const acc = acceptedCategories(a);
+    const acc = payableCategories(a);
     if (!acc.length && !formsOf(a).length) return "";
     const done = formsSubmitted(a).length;
     const drafts = formsOf(a).filter((f) => f.status === "draft").length;
@@ -884,11 +884,15 @@ ${PAY_LINK}
 
   // Блок анкет в карточке заявки: ответы по секциям + правка с причиной.
   function formsSectionHtml(a) {
-    const acc = acceptedCategories(a);
+    const acc = payableCategories(a);
     const forms = formsOf(a);
-    if (!acc.length && !forms.length) return "";
+    const later = laterCategories(a);
+    if (!acc.length && !forms.length && !later.length) return "";
     const cats = [...new Set([...acc, ...forms.map((f) => f.category)])];
+    const laterHtml = later.map((c) => `<div class="form-card"><div class="form-card-head"><b>${esc(catLabel(c))}</b><span class="chip chip-muted">Позже</span></div>
+      <p class="d-hint">Анкета и оплата батлов откроются ближе к ноябрю. Приём заявок — до 14 ноября.</p></div>`).join("");
     const items = cats.map((c) => {
+      if (c === "battle") return "";
       const f = forms.find((x) => x.category === c);
       const link = `https://xn----7sbocmxidei1bb9cwe.xn--p1ai/anketa.html?id=${encodeURIComponent(a.id)}&cat=${encodeURIComponent(c)}`;
       if (!f) {
@@ -915,7 +919,7 @@ ${PAY_LINK}
         <div class="os-note-actions"><button type="button" class="btn btn-ghost" data-copy-link="${esc(link)}">Скопировать ссылку на анкету</button></div>
       </div>`;
     }).join("");
-    return `<div class="d-section-title">Анкеты участника</div>${items}`;
+    return `<div class="d-section-title">Анкеты участника</div>${items}${laterHtml}`;
   }
 
   function bindFormsSection(a) {
@@ -953,6 +957,12 @@ ${PAY_LINK}
   function acceptedCategories(a) {
     return appCategories(a).filter((c) => categoryStatus(a, c) === "accepted");
   }
+  function payableCategories(a) {
+    return acceptedCategories(a).filter((c) => c !== "battle");
+  }
+  function laterCategories(a) {
+    return appCategories(a).filter((c) => c === "battle");
+  }
   function feeKind(a, cat) {
     if (cat === "battle") return "battle";
     if (cat === "duet") return "duet";
@@ -962,11 +972,30 @@ ${PAY_LINK}
   }
   // Ожидаемая сумма взноса без промокода (для команд — за одного человека, точное число неизвестно).
   function feeExpected(a) {
-    return acceptedCategories(a).reduce((s, c) => {
+    return payableCategories(a).reduce((s, c) => {
       const k = feeKind(a, c);
       const people = k === "duet" ? 2 : 1;
       return s + FEE_PRICES[k] * people;
     }, 0);
+  }
+  function feeCategoryRowsHtml(a) {
+    const paidCats = new Set(a.feeStatus === "paid" ? (a.feeCategories || payableCategories(a)) : []);
+    const rows = [];
+    for (const c of payableCategories(a)) {
+      const k = feeKind(a, c);
+      const amt = FEE_PRICES[k] * (k === "duet" ? 2 : 1);
+      if (a.feeStatus === "paid" && (paidCats.has(c) || !paidCats.size)) {
+        rows.push(row(catLabel(c), `<span class="chip st-paid"><span class="status-dot"></span>Оплачен</span>`));
+      } else if (a.feeStatus === "awaiting_payment") {
+        rows.push(row(catLabel(c), `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Начал оплату</span> · ${esc(fmtRub(amt))}`));
+      } else {
+        rows.push(row(catLabel(c), `<span class="chip chip-muted">Не оплачен</span> · ${esc(fmtRub(amt))}`));
+      }
+    }
+    for (const c of laterCategories(a)) {
+      rows.push(row(catLabel(c), `<span class="chip chip-muted">Оплата позже</span> · приём до 14 ноября`));
+    }
+    return rows.join("");
   }
   function feeChipHtml(a) {
     if (a.feeStatus === "paid") {
@@ -975,7 +1004,7 @@ ${PAY_LINK}
     if (a.feeStatus === "awaiting_payment") {
       return `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Взнос: начал оплату</span>`;
     }
-    if (acceptedCategories(a).length && a.status !== "awaiting_payment") {
+    if (payableCategories(a).length && a.status !== "awaiting_payment") {
       return `<span class="chip chip-muted">Взнос не оплачен</span>`;
     }
     return "";
@@ -983,7 +1012,7 @@ ${PAY_LINK}
   function fmtRub(n) { return `${(Number(n) || 0).toLocaleString("ru-RU")} ₽`; }
 
   function feeCandidates() {
-    return (state.apps || []).filter((a) => a.feeStatus === "paid" || (a.status !== "awaiting_payment" && acceptedCategories(a).length));
+    return (state.apps || []).filter((a) => a.feeStatus === "paid" || (a.status !== "awaiting_payment" && payableCategories(a).length));
   }
 
   function filteredFees() {
@@ -998,7 +1027,7 @@ ${PAY_LINK}
         if (st === "unpaid") return a.feeStatus !== "paid";
         return true;
       })
-      .filter((a) => !cat || (a.feeStatus === "paid" ? (a.feeCategories || []).includes(cat) : acceptedCategories(a).includes(cat)))
+      .filter((a) => !cat || (a.feeStatus === "paid" ? (a.feeCategories || []).includes(cat) : payableCategories(a).includes(cat)))
       .filter((a) => {
         if (!promo) return true;
         const code = (a.feePromo || "").toUpperCase();
@@ -1018,7 +1047,7 @@ ${PAY_LINK}
     const current = el.feesCategoryFilter.value;
     const cats = new Set();
     feeCandidates().forEach((a) => {
-      (a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a)).forEach((c) => cats.add(c));
+      (a.feeStatus === "paid" ? (a.feeCategories || []) : payableCategories(a)).forEach((c) => cats.add(c));
     });
     el.feesCategoryFilter.innerHTML = `<option value="">Все категории</option>` +
       [...cats].sort().map((c) => `<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join("");
@@ -1064,7 +1093,7 @@ ${PAY_LINK}
       card.type = "button";
       card.className = "chat-card";
       card.addEventListener("click", () => openAppFromList(a.id));
-      const cats = a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a);
+      const cats = a.feeStatus === "paid" ? (a.feeCategories || []) : payableCategories(a);
       const chip = a.feeStatus === "paid"
         ? `<span class="chip st-paid">Оплачен · ${esc(fmtRub(a.feeAmount))}</span>`
         : (a.feeStatus === "awaiting_payment"
@@ -1076,7 +1105,7 @@ ${PAY_LINK}
           <span class="chat-card-id">${esc(fmtDate(a.feePaidAt || a.feeCreatedAt || a.createdAt))}</span>
         </div>
         <div class="app-card-name">${esc(a.fullName || "—")}</div>
-        <div class="chat-card-preview">${esc(cats.map(catLabel).join(", ") || "—")}${a.feeParticipants > 1 ? ` · ${a.feeParticipants} чел.` : ""}${a.feePromo ? " · 🎟 " + esc(a.feePromo) : ""} · ${formsSubmitted(a).length ? `анкета ✓ ${formsSubmitted(a).length}/${Math.max(1, acceptedCategories(a).length)}` : "анкеты нет"}</div>
+        <div class="chat-card-preview">${esc(cats.map(catLabel).join(", ") || "—")}${a.feeParticipants > 1 ? ` · ${a.feeParticipants} чел.` : ""}${a.feePromo ? " · 🎟 " + esc(a.feePromo) : ""} · ${formsSubmitted(a).length ? `анкета ✓ ${formsSubmitted(a).length}/${Math.max(1, payableCategories(a).length)}` : "анкеты нет"}</div>
         <div class="chat-card-meta"><span>${esc(a.phone || "—")}${a.email ? " · " + esc(a.email) : ""}</span></div>`;
       frag.appendChild(card);
     }
@@ -1097,7 +1126,7 @@ ${PAY_LINK}
         "Email": a.email || "",
         "Телефон": a.phone || "",
         "Telegram": a.telegram || "",
-        "Категории (взнос)": (a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a)).map(catLabel).join(", "),
+        "Категории (взнос)": (a.feeStatus === "paid" ? (a.feeCategories || []) : payableCategories(a)).map(catLabel).join(", "),
         "Участников": a.feeParticipants || "",
         "Статус взноса": a.feeStatus === "paid" ? "Оплачен" : (a.feeStatus === "awaiting_payment" ? "Начал оплату" : "Не оплачен"),
         "Сумма, ₽": a.feeStatus === "paid" ? (Number(a.feeAmount) || 0) : "",
@@ -1213,7 +1242,7 @@ ${PAY_LINK}
           "Видео": a.videoUrl || "",
           "Сообщений": realCorrespondenceMessages(a).length,
           "ID платежа": a.paymentId || "",
-          "Взнос": a.feeStatus === "paid" ? "Оплачен" : (a.feeStatus === "awaiting_payment" ? "Начал оплату" : (acceptedCategories(a).length ? "Не оплачен" : "")),
+          "Взнос": a.feeStatus === "paid" ? "Оплачен" : (a.feeStatus === "awaiting_payment" ? "Начал оплату" : (payableCategories(a).length ? "Не оплачен" : "")),
           "Сумма взноса, ₽": a.feeStatus === "paid" ? (Number(a.feeAmount) || 0) : "",
           "Промокод взноса": a.feePromo || "",
           "Дата взноса": a.feePaidAt ? fmtDate(a.feePaidAt) : "",
@@ -1592,7 +1621,7 @@ ${PAY_LINK}
     if (feesSummary) {
       const feePaid = apps.filter((a) => a.feeStatus === "paid");
       const feeRevenue = feePaid.reduce((s, a) => s + (Number(a.feeAmount) || 0), 0);
-      const feeUnpaid = apps.filter((a) => a.feeStatus !== "paid" && a.status !== "awaiting_payment" && acceptedCategories(a).length).length;
+      const feeUnpaid = apps.filter((a) => a.feeStatus !== "paid" && a.status !== "awaiting_payment" && payableCategories(a).length).length;
       const feeByCat = {};
       feePaid.forEach((a) => (a.feeCategories || []).forEach((c) => { feeByCat[c] = (feeByCat[c] || 0) + 1; }));
       const feeByPromo = {};
@@ -1997,16 +2026,11 @@ ${PAY_LINK}
           <button type="button" class="btn btn-ghost" id="pay-restore">Вернуть «Оплачено»${paidEvidence.length ? " · " + esc(paidEvidence.join(", ")) : ""}</button>
         </div>` : ""}
 
-      ${(acceptedCategories(a).length || a.feeStatus) ? `
+      ${(payableCategories(a).length || laterCategories(a).length || a.feeStatus) ? `
       <div class="d-section-title">Взнос за участие</div>
       <dl class="d-grid">
-        ${row("Статус", a.feeStatus === "paid"
-          ? `<span class="chip st-paid"><span class="status-dot"></span>Оплачен</span>`
-          : (a.feeStatus === "awaiting_payment"
-            ? `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Начал оплату, не завершил</span>`
-            : `<span class="chip chip-muted">Не оплачен</span>`))}
-        ${row("Категории", esc((a.feeStatus === "paid" ? (a.feeCategories || []) : acceptedCategories(a)).map(catLabel).join(", ") || "—"))}
-        ${a.feeStatus === "paid" ? row("Сумма", esc(fmtRub(a.feeAmount))) : row("Ожидается", esc(fmtRub(feeExpected(a))) + (acceptedCategories(a).some((c) => feeKind(a, c) === "team") ? " × чел." : "") + " без промо")}
+        ${feeCategoryRowsHtml(a)}
+        ${a.feeStatus === "paid" ? row("Итого оплачено", esc(fmtRub(a.feeAmount))) : (payableCategories(a).length ? row("Итого сейчас", esc(fmtRub(feeExpected(a))) + (payableCategories(a).some((c) => feeKind(a, c) === "team") ? " × чел." : "") + " без промо") : "")}
         ${a.feeParticipants ? row("Участников", esc(String(a.feeParticipants))) : ""}
         ${a.feePromo ? row("Промокод", `<span class="chip chip-promo">🎟 ${esc(a.feePromo)}</span>`) : ""}
         ${a.feePaidAt ? row("Дата оплаты", esc(fmtDate(a.feePaidAt))) : ""}
@@ -2014,7 +2038,7 @@ ${PAY_LINK}
         ${feeHistory.length ? row("История", feeHistory.map((h) => `${esc(fmtDate(h.at))} — ${esc(h.comment || "")}`).join("<br>")) : ""}
       </dl>
       <div class="os-note-actions">
-        ${a.feeStatus !== "paid" ? `<button type="button" class="btn btn-ghost" id="fee-mark-paid">Отметить взнос оплаченным</button>` : ""}
+        ${a.feeStatus !== "paid" && payableCategories(a).length ? `<button type="button" class="btn btn-ghost" id="fee-mark-paid">Отметить взнос оплаченным</button>` : ""}
         ${a.feePaymentId ? `<button type="button" class="btn btn-ghost" id="fee-verify">Проверить взнос в ЮKassa</button>` : ""}
         ${a.feeStatus === "paid" ? `<button type="button" class="btn btn-ghost" id="fee-reset">Снять отметку взноса</button>` : ""}
       </div>` : ""}
