@@ -30,7 +30,7 @@
   const WORKFLOW_STATUSES = ["reserve", "accepted", "rejected", "reviewing"];
   const PAYMENT_STATUSES = ["awaiting_payment", "paid"];
   const DEFAULT_REPLY_SUBJECT = "Чемпионат «Тень»";
-  const PAY_LINK = "https://xn----7sbocmxidei1bb9cwe.xn--p1ai/apply.html#packages";
+  const PAY_LINK = "https://xn----7sbocmxidei1bb9cwe.xn--p1ai/pay.html";
   const OS_TEMPLATE_IDS = new Set(["accepted", "reserve", "rejected"]);
   const DEFAULT_BULK_SEND = "2026-09-14T11:00";
 
