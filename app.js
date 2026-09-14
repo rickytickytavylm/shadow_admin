@@ -756,9 +756,29 @@ ${PAY_LINK}
     }
   }
 
+  // Поле даты над списком показывает реальную ближайшую дату рассылки,
+  // а не значение по умолчанию. Пока пользователь его не трогал.
+  let bulkSendTouched = false;
+  function syncBulkSendField() {
+    const atEl = document.getElementById("bulk-send-at");
+    if (!atEl || bulkSendTouched) return;
+    const pending = (state.apps || [])
+      .filter((a) => a.scheduledSendAt && !a.scheduledSentAt)
+      .map((a) => a.scheduledSendAt)
+      .sort();
+    atEl.value = pending.length ? isoToLocalDateTime(pending[0]) : DEFAULT_BULK_SEND;
+    const btn = document.getElementById("bulk-schedule");
+    if (btn) {
+      btn.textContent = pending.length
+        ? `Таймер рассылки · ${pending.length} в очереди`
+        : "Таймер рассылки";
+    }
+  }
+
   function renderApps() {
     updateFilterCounts();
     updateInboxAlert();
+    syncBulkSendField();
     const items = filteredApps();
     // Бейдж = число заявок по текущему фильтру (динамически).
     setBadge(el.tabAppsCount, items.length);
@@ -2341,6 +2361,8 @@ ${PAY_LINK}
   if (el.promoFilter) el.promoFilter.addEventListener("change", renderApps);
   const exportBtn = document.getElementById("export-excel");
   if (exportBtn) exportBtn.addEventListener("click", () => exportToExcel(exportBtn));
+  const bulkSendAtEl = document.getElementById("bulk-send-at");
+  if (bulkSendAtEl) bulkSendAtEl.addEventListener("input", () => { bulkSendTouched = true; });
   const bulkScheduleBtn = document.getElementById("bulk-schedule");
   if (bulkScheduleBtn) {
     bulkScheduleBtn.addEventListener("click", async () => {
@@ -2372,6 +2394,7 @@ ${PAY_LINK}
           body: JSON.stringify({ at, ids: eligible.map((x) => x.id), requireFeedback: true }),
         });
         toast(`Таймер поставлен: ${res.scheduled} заявок${res.skipped ? `, пропущено ${res.skipped}` : ""}${noOs ? `, без ОС осталось ${noOs}` : ""}`, "ok");
+        bulkSendTouched = false;
         await loadAll();
       } catch (err) {
         toast(`Не удалось поставить таймер: ${err.message}`, "err");
