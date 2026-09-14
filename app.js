@@ -211,6 +211,8 @@ ${PAY_LINK}
 
   const state = {
     apps: [],
+    forms: [],
+    formSchema: null,
     chats: [],
     sponsors: [],
     tickets: [],
@@ -388,7 +390,7 @@ ${PAY_LINK}
         await api("/api/applications/inbox/fetch", { method: "POST" }).catch(() => {});
       }
 
-      const [apps, chats, sponsors, tickets, showLeads, analytics, deleted] = await Promise.all([
+      const [apps, chats, sponsors, tickets, showLeads, analytics, deleted, forms, formSchema] = await Promise.all([
         api("/api/applications?limit=1000"),
         api("/api/ai/chats?limit=500").catch(() => ({ items: [] })),
         api("/api/sponsors?limit=1000").catch(() => ({ items: [] })),
@@ -396,7 +398,11 @@ ${PAY_LINK}
         api("/api/show-leads?limit=1000").catch(() => ({ items: [] })),
         api("/api/events?type=vinovnali_click&limit=1000").catch(() => ({ items: [], stats: null })),
         api("/api/applications/deleted/list?limit=300").catch(() => ({ items: [] })),
+        api("/api/forms").catch(() => ({ items: [] })),
+        state.formSchema ? Promise.resolve(null) : api("/api/forms/schema").catch(() => null),
       ]);
+      state.forms = forms.items || [];
+      if (formSchema && formSchema.schema) state.formSchema = formSchema.schema;
       state.apps = apps.items || [];
       state.emailEnabled = Boolean(apps.emailEnabled);
       state.inboxEnabled = Boolean(apps.inboxEnabled);
@@ -642,6 +648,9 @@ ${PAY_LINK}
       if (extra === "os_no" && a.feedbackGiven) return false;
       if (extra === "fee_paid" && a.feeStatus !== "paid") return false;
       if (extra === "fee_unpaid" && (a.feeStatus === "paid" || !acceptedCategories(a).length)) return false;
+      if (extra === "form_yes" && !formsSubmitted(a).length) return false;
+      if (extra === "form_no" && (!acceptedCategories(a).length || formsSubmitted(a).length >= acceptedCategories(a).length)) return false;
+      if (extra === "fee_form_no" && (!acceptedCategories(a).length || (a.feeStatus === "paid" && formsSubmitted(a).length >= acceptedCategories(a).length))) return false;
       if (q) {
         const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city} ${a.promoCode || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -779,7 +788,162 @@ ${PAY_LINK}
         ${a.scheduledSendAt && !a.scheduledSentAt ? `<span class="chip chip-muted">⏰ ${esc(fmtDate(a.scheduledSendAt))}</span>` : ""}
         ${a.promoCode ? `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>` : ""}
         ${feeChipHtml(a)}
+        ${formChipHtml(a)}
       </div>`;
+  }
+
+  // ── Анкеты участников ──
+  function formsOf(a) { return (state.forms || []).filter((f) => f.applicationId === a.id); }
+  function formsSubmitted(a) { return formsOf(a).filter((f) => f.status === "submitted"); }
+  function formChipHtml(a) {
+    const acc = acceptedCategories(a);
+    if (!acc.length && !formsOf(a).length) return "";
+    const done = formsSubmitted(a).length;
+    const drafts = formsOf(a).filter((f) => f.status === "draft").length;
+    if (done && done >= acc.length) return `<span class="chip st-paid"><span class="status-dot"></span>Анкета ✓${acc.length > 1 ? ` ${done}/${acc.length}` : ""}</span>`;
+    if (done) return `<span class="chip chip-os">Анкета ${done}/${acc.length}</span>`;
+    if (drafts) return `<span class="chip chip-muted">Анкета: черновик</span>`;
+    return `<span class="chip chip-muted">Анкета не заполнена</span>`;
+  }
+  const FORM_FORMAT_LABELS = { solo: "Соло", duet: "Дуэт", team: "Команда" };
+  function formQuestions() {
+    const s = state.formSchema;
+    if (!s) return [];
+    const out = [];
+    for (const sec of s.sections) for (const q of sec.questions) out.push({ ...q, section: sec.title });
+    return out;
+  }
+  function formQuestionVisible(q, f) {
+    const ans = f.answers || {};
+    if (q.formats && !q.formats.includes(f.format)) return false;
+    if (q.showIf) {
+      const v = String(ans[q.showIf.q] ?? "").trim();
+      if (q.showIf.in && !q.showIf.in.includes(v)) return false;
+      if (q.showIf.notIn && q.showIf.notIn.includes(v)) return false;
+    }
+    return true;
+  }
+  function formAnswerText(q, f) {
+    const v = (f.answers || {})[q.id];
+    if (q.type === "list") return (Array.isArray(v) ? v : []).filter(Boolean).map((x, i) => `${i + 1}. ${x}`).join("\n");
+    if (q.type === "helpers") return (Array.isArray(v) ? v : []).filter((x) => x && (x.name || x.phone)).map((x, i) => `${i + 1}. ${x.name || "—"} · ${x.phone || "—"}`).join("\n");
+    return v === undefined || v === null ? "" : String(v);
+  }
+  function formConsentText(c, f) {
+    const v = (f.consents || {})[c.id];
+    return c.type === "radio" ? String(v || "") : (v === true ? "Да" : "—");
+  }
+
+  // Отдельная выгрузка анкет: ФИО/контакты/категория/формат/дата/статус, затем все ответы по схеме.
+  async function exportFormsExcel(btn) {
+    const forms = (state.forms || []).filter((f) => f.status === "submitted" || f.status === "draft");
+    if (!forms.length) { toast("Анкет пока нет", "err"); return; }
+    const label = btn ? btn.querySelector("span") : null;
+    const prev = label ? label.textContent : "";
+    if (btn) { btn.disabled = true; if (label) label.textContent = "Готовим…"; }
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      const qs = formQuestions();
+      const consents = (state.formSchema && state.formSchema.consents) || [];
+      const rows = forms
+        .sort((a, b) => ((a.submittedAt || a.updatedAt) < (b.submittedAt || b.updatedAt) ? 1 : -1))
+        .map((f) => {
+          const a = (state.apps || []).find((x) => x.id === f.applicationId) || {};
+          const row = {
+            "ФИО / контактное лицо": f.answers?.solo_full_name || f.answers?.duet_contact || f.answers?.team_contact || a.fullName || "",
+            "Имя из заявки": a.fullName || "",
+            "Email": a.email || f.email || "",
+            "Телефон": a.phone || "",
+            "Instagram": a.instagram || "",
+            "Telegram": a.telegram || "",
+            "Категория": catLabel(f.category),
+            "Формат": FORM_FORMAT_LABELS[f.format] || f.format,
+            "Дата заполнения": f.submittedAt ? fmtDate(f.submittedAt) : (f.updatedAt ? fmtDate(f.updatedAt) + " (черновик)" : ""),
+            "Статус анкеты": f.status === "submitted" ? "Отправлена" : "Черновик",
+            "Взнос": a.feeStatus === "paid" ? "Оплачен" : "Не оплачен",
+          };
+          for (const q of qs) row[q.label] = formQuestionVisible(q, f) ? formAnswerText(q, f) : "";
+          for (const c of consents) row[c.label.slice(0, 60)] = formConsentText(c, f);
+          row["История правок"] = (f.editHistory || []).map((h) => `${fmtDate(h.at)} — ${h.by === "admin" ? "орг: " : ""}${h.comment || ""}`).join("\n");
+          return row;
+        });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const firstCols = [26, 22, 26, 16, 16, 16, 22, 10, 18, 14, 12];
+      ws["!cols"] = [...firstCols, ...qs.map(() => ({ wch: 28 })).map((x) => x.wch), ...consents.map(() => 14), 40].map((wch) => ({ wch }));
+      if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Анкеты");
+      XLSX.writeFile(wb, `teni-ankety-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast(`Выгружено анкет: ${rows.length}`, "ok");
+    } catch (err) {
+      toast(`Не удалось выгрузить: ${err.message}`, "err");
+    } finally {
+      if (btn) { btn.disabled = false; if (label) label.textContent = prev; }
+    }
+  }
+
+  // Блок анкет в карточке заявки: ответы по секциям + правка с причиной.
+  function formsSectionHtml(a) {
+    const acc = acceptedCategories(a);
+    const forms = formsOf(a);
+    if (!acc.length && !forms.length) return "";
+    const cats = [...new Set([...acc, ...forms.map((f) => f.category)])];
+    const items = cats.map((c) => {
+      const f = forms.find((x) => x.category === c);
+      const link = `https://xn----7sbocmxidei1bb9cwe.xn--p1ai/anketa.html?id=${encodeURIComponent(a.id)}&cat=${encodeURIComponent(c)}`;
+      if (!f) {
+        return `<div class="form-card"><div class="form-card-head"><b>${esc(catLabel(c))}</b><span class="chip chip-muted">Не заполнена</span></div>
+          <div class="os-note-actions"><button type="button" class="btn btn-ghost" data-copy-link="${esc(link)}">Скопировать ссылку на анкету</button></div></div>`;
+      }
+      const qs = formQuestions().filter((q) => formQuestionVisible(q, f));
+      let lastSection = "";
+      const rowsHtml = qs.map((q) => {
+        const sec = q.section !== lastSection ? `<div class="form-sec">${esc(q.section)}</div>` : "";
+        lastSection = q.section;
+        const val = formAnswerText(q, f);
+        return `${sec}<div class="form-row" data-form-q="${esc(q.id)}"><span class="form-q">${esc(q.label)}</span><span class="form-a">${val ? esc(val).replace(/\n/g, "<br>") : "—"}</span><button type="button" class="form-edit-btn" data-form-edit="${esc(f.id)}" data-q="${esc(q.id)}" title="Изменить ответ">✎</button></div>`;
+      }).join("");
+      const consents = ((state.formSchema && state.formSchema.consents) || []).map((c) => `<div class="form-row"><span class="form-q">${esc(c.label.slice(0, 70))}${c.label.length > 70 ? "…" : ""}</span><span class="form-a">${esc(formConsentText(c, f))}</span></div>`).join("");
+      const hist = (f.editHistory || []).slice(0, 10).map((h) => `${esc(fmtDate(h.at))} — ${h.by === "admin" ? "орг: " : ""}${esc(h.comment || "")}`).join("<br>");
+      return `<div class="form-card">
+        <div class="form-card-head"><b>${esc(catLabel(c))} · ${esc(FORM_FORMAT_LABELS[f.format] || f.format)}</b>
+          <span class="chip ${f.status === "submitted" ? "st-paid" : "chip-muted"}">${f.status === "submitted" ? "Отправлена " + esc(fmtDate(f.submittedAt)) : "Черновик · " + esc(fmtDate(f.updatedAt))}</span></div>
+        <details class="d-details"><summary>Ответы (${qs.length})</summary>
+          <div class="form-rows">${rowsHtml}<div class="form-sec">Подтверждения и согласия</div>${consents}</div>
+          ${hist ? `<div class="form-sec">История</div><p class="d-hint">${hist}</p>` : ""}
+        </details>
+        <div class="os-note-actions"><button type="button" class="btn btn-ghost" data-copy-link="${esc(link)}">Скопировать ссылку на анкету</button></div>
+      </div>`;
+    }).join("");
+    return `<div class="d-section-title">Анкеты участника</div>${items}`;
+  }
+
+  function bindFormsSection(a) {
+    el.drawerBody.querySelectorAll("[data-copy-link]").forEach((btn) => btn.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(btn.dataset.copyLink); toast("Ссылка скопирована", "ok"); }
+      catch { window.prompt("Ссылка на анкету:", btn.dataset.copyLink); }
+    }));
+    el.drawerBody.querySelectorAll("[data-form-edit]").forEach((btn) => btn.addEventListener("click", async () => {
+      const f = (state.forms || []).find((x) => x.id === btn.dataset.formEdit);
+      const q = formQuestions().find((x) => x.id === btn.dataset.q);
+      if (!f || !q) return;
+      if (q.type === "list" || q.type === "helpers") { toast("Списки участников правятся участником через анкету", "err"); return; }
+      const current = formAnswerText(q, f);
+      const next = window.prompt(`${q.label}${q.options ? "\nВарианты: " + q.options.join(" / ") : ""}`, current);
+      if (next === null || next === current) return;
+      const reason = window.prompt("Почему меняем ответ? Причина попадёт в историю анкеты.", "");
+      if (reason === null) return;
+      if (reason.trim().length < 3) { toast("Укажите причину", "err"); return; }
+      try {
+        const res = await api(`/api/forms/${f.id}/edit`, { method: "POST", body: JSON.stringify({ answers: { [q.id]: next }, editComment: reason.trim() }) });
+        const idx = state.forms.findIndex((x) => x.id === f.id);
+        if (idx >= 0) state.forms[idx] = res.item;
+        openAppDrawer(a.id, { preserveScroll: true });
+        toast("Ответ изменён, причина записана", "ok");
+      } catch (err) {
+        toast(`Не удалось: ${err.message}`, "err");
+      }
+    }));
   }
 
   // ── Взнос за участие ──
@@ -882,6 +1046,8 @@ ${PAY_LINK}
         box("Прошли, не оплатили", unpaid) +
         box("Начали, не завершили", started) +
         box("Ожидается, ₽ (без промо)", expectedUnpaid.toLocaleString("ru-RU")) +
+        box("Анкет отправлено", (state.forms || []).filter((f) => f.status === "submitted").length) +
+        box("Анкет черновиков", (state.forms || []).filter((f) => f.status === "draft").length) +
         Object.entries(byCat).sort((x, y) => y[1] - x[1]).map(([c, n]) => box(catLabel(c), n)).join("") +
         Object.entries(byPromo).map(([p, n]) => box(p, n)).join("");
     }
@@ -910,7 +1076,7 @@ ${PAY_LINK}
           <span class="chat-card-id">${esc(fmtDate(a.feePaidAt || a.feeCreatedAt || a.createdAt))}</span>
         </div>
         <div class="app-card-name">${esc(a.fullName || "—")}</div>
-        <div class="chat-card-preview">${esc(cats.map(catLabel).join(", ") || "—")}${a.feeParticipants > 1 ? ` · ${a.feeParticipants} чел.` : ""}${a.feePromo ? " · 🎟 " + esc(a.feePromo) : ""}</div>
+        <div class="chat-card-preview">${esc(cats.map(catLabel).join(", ") || "—")}${a.feeParticipants > 1 ? ` · ${a.feeParticipants} чел.` : ""}${a.feePromo ? " · 🎟 " + esc(a.feePromo) : ""} · ${formsSubmitted(a).length ? `анкета ✓ ${formsSubmitted(a).length}/${Math.max(1, acceptedCategories(a).length)}` : "анкеты нет"}</div>
         <div class="chat-card-meta"><span>${esc(a.phone || "—")}${a.email ? " · " + esc(a.email) : ""}</span></div>`;
       frag.appendChild(card);
     }
@@ -1853,6 +2019,8 @@ ${PAY_LINK}
         ${a.feeStatus === "paid" ? `<button type="button" class="btn btn-ghost" id="fee-reset">Снять отметку взноса</button>` : ""}
       </div>` : ""}
 
+      ${formsSectionHtml(a)}
+
       <div class="d-section-title">Категории</div>
       <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:6px">${catsHtml || "—"}</div>
       ${cats.includes("shadow") ? `
@@ -2027,6 +2195,8 @@ ${PAY_LINK}
         }
       });
     }
+
+    bindFormsSection(a);
 
     // ── Взнос за участие: ручная отметка / сверка / снятие ──
     const feeMark = document.getElementById("fee-mark-paid");
@@ -2798,6 +2968,8 @@ ${PAY_LINK}
   if (el.feesPromoFilter) el.feesPromoFilter.addEventListener("change", renderFees);
   const exportFeesBtn = document.getElementById("export-fees");
   if (exportFeesBtn) exportFeesBtn.addEventListener("click", () => exportFeesExcel(exportFeesBtn));
+  const exportFormsBtn = document.getElementById("export-forms");
+  if (exportFormsBtn) exportFormsBtn.addEventListener("click", () => exportFormsExcel(exportFormsBtn));
   el.drawerClose.addEventListener("click", closeDrawer);
   el.drawerBackdrop.addEventListener("click", closeDrawer);
   el.alertCancel.addEventListener("click", () => closeAlert(false));
