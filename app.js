@@ -289,9 +289,39 @@ ${PAY_LINK}
   function catLabel(c) { return CATEGORY_LABELS[c] || c || "—"; }
   function statusLabel(s) { return STATUS_LABELS[s] || s || "new"; }
 
+  // Если основной адрес (RU-прокси) не отвечает за 8 секунд или падает по сети,
+  // переключаемся на прямой адрес Railway и запоминаем это до перезагрузки.
+  const FALLBACK_API_BASE = (window.SHADOW_ADMIN_CONFIG?.FALLBACK_API_BASE || "").replace(/\/$/, "");
+  let activeApiBase = API_BASE;
+  let apiFallbackNotified = false;
+  async function fetchWithTimeout(url, options, ms) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    try {
+      return await fetch(url, { ...options, signal: ctrl.signal });
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  async function apiFetch(path, options) {
+    if (!FALLBACK_API_BASE || activeApiBase !== API_BASE) {
+      return fetchWithTimeout(`${activeApiBase}${path}`, options, 25000);
+    }
+    try {
+      return await fetchWithTimeout(`${API_BASE}${path}`, options, 8000);
+    } catch (err) {
+      activeApiBase = FALLBACK_API_BASE;
+      if (!apiFallbackNotified) {
+        apiFallbackNotified = true;
+        toast("Основной сервер не отвечает, работаем через запасной адрес", "err");
+      }
+      return fetchWithTimeout(`${FALLBACK_API_BASE}${path}`, options, 25000);
+    }
+  }
+
   async function api(path, options = {}) {
     const token = getToken();
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await apiFetch(path, {
       ...options,
       headers: { "Content-Type": "application/json", "x-admin-token": token, ...(options.headers || {}) },
     });
