@@ -32,7 +32,7 @@
   const DEFAULT_REPLY_SUBJECT = "Чемпионат «Тень»";
   const PAY_LINK = "https://xn----7sbocmxidei1bb9cwe.xn--p1ai/pay.html";
   const OS_TEMPLATE_IDS = new Set(["accepted", "reserve", "rejected"]);
-  const DEFAULT_BULK_SEND = "2026-09-14T11:00";
+  const DEFAULT_BULK_SEND = "2026-09-14T20:00";
 
   // Готовые шаблоны писем. [Имя] и заметка ОС подставляются автоматически.
   const EMAIL_TEMPLATES = [
@@ -268,6 +268,7 @@ ${PAY_LINK}
     setTimeout(() => {
       el.alert.hidden = true;
       el.alertBackdrop.hidden = true;
+      if (el.alertCancel) el.alertCancel.hidden = false;
     }, 280);
     if (alertResolver) {
       const r = alertResolver;
@@ -275,11 +276,12 @@ ${PAY_LINK}
       r(result);
     }
   }
-  function showConfirm({ title, message }) {
+  function showConfirm({ title, message, okOnly = false }) {
     return new Promise((resolve) => {
       alertResolver = resolve;
       el.alertTitle.textContent = title;
       el.alertMessage.textContent = message;
+      if (el.alertCancel) el.alertCancel.hidden = !!okOnly;
       el.alert.hidden = false;
       el.alertBackdrop.hidden = false;
       requestAnimationFrame(() => {
@@ -709,12 +711,33 @@ ${PAY_LINK}
   function localDateTimeToIso(value) {
     const raw = String(value || "").trim();
     const m = raw.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
-    if (!m) return "2026-09-14T08:00:00.000Z";
+    if (!m) return "";
     return new Date(`${m[1]}:00+03:00`).toISOString();
   }
 
+  function prettyLocalDateTime(value) {
+    const iso = localDateTimeToIso(value);
+    return iso ? fmtDate(iso) : (value || "—");
+  }
+
+  function suggestedSendLocal() {
+    const twenty = new Date("2026-09-14T20:00:00+03:00");
+    if (Date.now() < twenty.getTime() - 60_000) return DEFAULT_BULK_SEND;
+    const soon = new Date(Date.now() + 30 * 60 * 1000);
+    soon.setSeconds(0, 0);
+    soon.setMinutes(Math.ceil(soon.getMinutes() / 5) * 5);
+    return isoToLocalDateTime(soon.toISOString());
+  }
+
+  // Черновик времени в карточке: смена статуса не должна сбрасывать поле.
+  let pendingAppSendAt = { id: "", value: "" };
+  function captureAppSendAt(id) {
+    const input = document.getElementById("app-send-at");
+    if (input && id) pendingAppSendAt = { id, value: input.value || "" };
+  }
+
   function isoToLocalDateTime(iso) {
-    if (!iso) return DEFAULT_BULK_SEND;
+    if (!iso) return suggestedSendLocal();
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return DEFAULT_BULK_SEND;
     const parts = new Intl.DateTimeFormat("sv-SE", {
@@ -785,7 +808,7 @@ ${PAY_LINK}
           : (hasRealCorrespondence(a) ? `<span class="chip chip-muted">✉ ${realCorrespondenceMessages(a).length}</span>` : "")}
         ${a.feedbackGiven ? `<span class="chip chip-os">ОС ✓</span>` : ""}
         ${a.feedbackText ? `<span class="chip chip-muted">заметка ОС</span>` : ""}
-        ${a.scheduledSendAt && !a.scheduledSentAt ? `<span class="chip chip-muted">⏰ ${esc(fmtDate(a.scheduledSendAt))}</span>` : ""}
+        ${a.scheduledSendAt && !a.scheduledSentAt ? `<span class="chip chip-timer">⏰ ${esc(fmtDate(a.scheduledSendAt))}</span>` : ""}
         ${a.promoCode ? `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>` : ""}
         ${feeChipHtml(a)}
         ${formChipHtml(a)}
@@ -1877,9 +1900,11 @@ ${PAY_LINK}
     ].join("\n");
   }
 
-  // Итог отбора для письма: прошёл > резерв > не прошёл (как на сервере).
+  // Итог отбора для письма: как на сервере — батл в сентябрьскую волну не входит.
   function selectionOutcomeClient(a) {
-    const sts = appCategories(a).map((c) => categoryStatus(a, c));
+    const sts = appCategories(a)
+      .filter((c) => c !== "battle")
+      .map((c) => categoryStatus(a, c));
     if (sts.includes("accepted")) return "accepted";
     if (sts.includes("reserve")) return "reserve";
     if (sts.includes("rejected")) return "rejected";
@@ -1887,6 +1912,7 @@ ${PAY_LINK}
   }
 
   function closeDrawer() {
+    pendingAppSendAt = { id: "", value: "" };
     persistOsDraft();
     el.drawer.classList.remove("is-open");
     el.drawerBackdrop.classList.remove("is-open");
@@ -1901,6 +1927,7 @@ ${PAY_LINK}
   }
 
   function openAppDrawer(id, { preserveScroll = false } = {}) {
+    if (state.drawer?.appId === id) captureAppSendAt(id);
     const a = state.apps.find((x) => x.id === id);
     if (!a) return;
     // Если ОС сейчас редактируется — не теряем текст при перерисовке карточки.
@@ -2095,14 +2122,17 @@ ${PAY_LINK}
            <details class="d-details"><summary>Показать письмо, которое уйдёт</summary>
              <div class="transcript" style="margin-top:10px"><div class="msg msg-user" style="max-width:100%"><div class="msg-subj">${esc(previewTpl.subject)}</div>${esc(fillTemplateBody(previewTpl, a))}</div></div>
            </details>`
-        : `<p class="d-hint">Статус пока «на рассмотрении» — письмо по таймеру не уйдёт, пока не выбран «прошёл / резерв / не прошёл».</p>`}
+        : `<p class="d-hint">Письмо по таймеру не уйдёт, пока на соло / дуэте / команде / Тени нет статуса «прошёл / резерв / не прошёл». Батл письмо сейчас не ставит.</p>`}
       ${a.scheduledSentAt
-        ? `<p class="d-hint">Письмо этой волны уже отправлено ${esc(fmtDate(a.scheduledSentAt))}.</p>`
-        : `<p class="d-hint">${a.scheduledSendAt
-          ? "Запланировано на " + esc(fmtDate(a.scheduledSendAt)) + ". Можно поменять дату только для этой заявки."
-          : "Таймер на все заявки ставится кнопкой «Таймер рассылки» над списком. Здесь — дата только для этой заявки."}</p>
-        <input id="app-send-at" class="field" type="datetime-local" value="${esc(isoToLocalDateTime(a.scheduledSendAt))}">
-        <button type="button" class="btn btn-ghost" id="app-schedule" style="margin-top:10px">Поставить таймер на эту заявку</button>`}
+        ? `<div class="d-timer-status is-sent">Письмо этой волны уже отправлено ${esc(fmtDate(a.scheduledSentAt))}.</div>`
+        : `${a.scheduledSendAt
+          ? `<div class="d-timer-status is-on">⏰ Таймер стоит: <b>${esc(fmtDate(a.scheduledSendAt))}</b> МСК. Письмо уйдёт само. На карточке в списке будет будильник.</div>`
+          : `<div class="d-timer-status">⏰ Таймер не поставлен. Поле ниже — только черновик, пока не нажмёте кнопку.</div>`}
+        <input id="app-send-at" class="field" type="datetime-local" value="${esc((pendingAppSendAt.id === a.id && pendingAppSendAt.value) || isoToLocalDateTime(a.scheduledSendAt))}">
+        <div class="d-timer-actions">
+          <button type="button" class="btn btn-ghost" id="app-schedule">${a.scheduledSendAt ? "Изменить таймер" : "Поставить таймер на эту заявку"}</button>
+          ${a.scheduledSendAt ? `<button type="button" class="btn btn-ghost" id="app-unschedule">Снять таймер</button>` : ""}
+        </div>`}
 
       <div class="d-section-title">Переписка</div>
       <div class="reply-needed-row">
@@ -2415,7 +2445,26 @@ ${PAY_LINK}
     const appScheduleBtn = document.getElementById("app-schedule");
     if (appScheduleBtn) {
       appScheduleBtn.addEventListener("click", async () => {
-        const at = localDateTimeToIso(document.getElementById("app-send-at")?.value);
+        const raw = document.getElementById("app-send-at")?.value || "";
+        const at = localDateTimeToIso(raw);
+        if (!at) {
+          toast("Укажите дату и время таймера", "err");
+          return;
+        }
+        if (!selectionOutcomeClient(a)) {
+          await showConfirm({
+            title: "Таймер не поставится",
+            message: "Сначала нажмите «прошёл / резерв / не прошёл» на соло, дуэте, команде или Тени. Батл письмо сейчас не ставит.",
+            okOnly: true,
+          });
+          return;
+        }
+        const whenLabel = prettyLocalDateTime(raw);
+        const ok = await showConfirm({
+          title: a.scheduledSendAt ? "Изменить таймер?" : "Поставить таймер на эту заявку?",
+          message: `Письмо уйдёт ${whenLabel} по Москве. На карточке появится будильник. Снять таймер можно кнопкой в этой же карточке.`,
+        });
+        if (!ok) return;
         appScheduleBtn.disabled = true;
         try {
           const res = await api(`/api/applications/${a.id}/schedule`, {
@@ -2423,12 +2472,46 @@ ${PAY_LINK}
             body: JSON.stringify({ at }),
           });
           Object.assign(a, res.item);
+          pendingAppSendAt = { id: "", value: "" };
           openAppDrawer(a.id, { preserveScroll: true });
           renderApps();
-          toast("Таймер поставлен на эту заявку", "ok");
+          await showConfirm({
+            title: "Таймер поставлен",
+            message: `На заявке ${a.fullName || ""} стоит ${whenLabel} МСК. Письмо уйдёт само. На карточке в списке — будильник.`,
+            okOnly: true,
+          });
         } catch (err) {
           appScheduleBtn.disabled = false;
           toast(`Не удалось поставить таймер: ${err.message}`, "err");
+        }
+      });
+    }
+    const appUnscheduleBtn = document.getElementById("app-unschedule");
+    if (appUnscheduleBtn) {
+      appUnscheduleBtn.addEventListener("click", async () => {
+        const ok = await showConfirm({
+          title: "Снять таймер с этой заявки?",
+          message: "Письмо по расписанию больше не уйдёт. Поставить заново можно этой же кнопкой.",
+        });
+        if (!ok) return;
+        appUnscheduleBtn.disabled = true;
+        try {
+          const res = await api(`/api/applications/${a.id}/schedule`, {
+            method: "POST",
+            body: JSON.stringify({ clear: true }),
+          });
+          Object.assign(a, res.item);
+          pendingAppSendAt = { id: "", value: "" };
+          openAppDrawer(a.id, { preserveScroll: true });
+          renderApps();
+          await showConfirm({
+            title: "Таймер снят",
+            message: "На этой заявке таймера больше нет.",
+            okOnly: true,
+          });
+        } catch (err) {
+          appUnscheduleBtn.disabled = false;
+          toast(`Не удалось снять таймер: ${err.message}`, "err");
         }
       });
     }
@@ -2939,7 +3022,7 @@ ${PAY_LINK}
       }
       const ok = await showConfirm({
         title: "Поставить таймер рассылки?",
-        message: `Письма уйдут ${atEl?.value?.replace("T", " ") || "14.09 11:00"} по Москве. Шаблон подбирается по статусу, заметка ОС вставляется сама. Заявок с ОС: ${eligible.length}.${noOs ? ` Без заметки ОС — ${noOs}, их пропустим (фильтр «ОС не предоставлена» покажет).` : ""} «На рассмотрении» не трогаем.`,
+        message: `Письма уйдут ${atEl?.value?.replace("T", " ") || "14.09 20:00"} по Москве. Шаблон подбирается по статусу, заметка ОС вставляется сама. Заявок с ОС: ${eligible.length}.${noOs ? ` Без заметки ОС — ${noOs}, их пропустим (фильтр «ОС не предоставлена» покажет).` : ""} «На рассмотрении» не трогаем.`,
       });
       if (!ok) return;
       bulkScheduleBtn.disabled = true;
