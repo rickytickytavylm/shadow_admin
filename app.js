@@ -521,6 +521,11 @@ ${PAY_LINK}
     return a.feeStatus !== "paid" && a.status !== "awaiting_payment" && payableCategories(a).length > 0;
   }
 
+  // Источник правды — текст заметки, не галочка «ОС предоставлена».
+  function hasOsNote(a) {
+    return Boolean((a?.feedbackText || "").trim());
+  }
+
   // Совпадает ли заявка со статусом.
   // Если выбрана категория (scopedCategory) — статус смотрим ТОЛЬКО в ней
   // (иначе Ева Винтер с «Тень·Отклонена» + «Соло·Прошёл» попадала в оба фильтра).
@@ -644,6 +649,29 @@ ${PAY_LINK}
         }
       }
     }
+    if (el.extraFilter) {
+      for (const opt of el.extraFilter.options) {
+        if (opt.dataset.base === undefined) opt.dataset.base = opt.textContent.replace(/\s*\(\d+\)$/, "");
+        if (!opt.value) {
+          opt.textContent = opt.dataset.base;
+          continue;
+        }
+        let n = 0;
+        if (opt.value === "os_yes") n = paid.filter(hasOsNote).length;
+        else if (opt.value === "os_no") n = paid.filter((a) => !hasOsNote(a)).length;
+        else n = apps.filter((a) => {
+          if (opt.value === "needs_reply") return needsReply(a);
+          if (opt.value === "has_messages") return hasRealCorrespondence(a);
+          if (opt.value === "fee_paid") return a.feeStatus === "paid";
+          if (opt.value === "fee_unpaid") return isFeeUnpaid(a);
+          if (opt.value === "form_yes") return formsSubmitted(a).length > 0;
+          if (opt.value === "form_no") return payableCategories(a).length > 0 && formsSubmitted(a).length < payableCategories(a).length;
+          if (opt.value === "fee_form_no") return payableCategories(a).length > 0 && !(a.feeStatus === "paid" && formsSubmitted(a).length >= payableCategories(a).length);
+          return false;
+        }).length;
+        opt.textContent = `${opt.dataset.base} (${n})`;
+      }
+    }
   }
 
   // ── Рендер заявок ──
@@ -664,8 +692,8 @@ ${PAY_LINK}
       if (promo && (a.promoCode || "").toUpperCase() !== promo) return false;
       if (extra === "needs_reply" && !needsReply(a)) return false;
       if (extra === "has_messages" && !hasRealCorrespondence(a)) return false;
-      if (extra === "os_yes" && !a.feedbackGiven) return false;
-      if (extra === "os_no" && a.feedbackGiven) return false;
+      if (extra === "os_yes" && !hasOsNote(a)) return false;
+      if (extra === "os_no" && hasOsNote(a)) return false;
       if (extra === "fee_paid" && a.feeStatus !== "paid") return false;
       if (extra === "fee_unpaid" && (a.feeStatus === "paid" || !payableCategories(a).length)) return false;
       if (extra === "form_yes" && !formsSubmitted(a).length) return false;
@@ -831,8 +859,7 @@ ${PAY_LINK}
         ${nr
           ? `<span class="chip chip-reply">✉ требует ответа</span>`
           : (hasRealCorrespondence(a) ? `<span class="chip chip-muted">✉ ${realCorrespondenceMessages(a).length}</span>` : "")}
-        ${a.feedbackGiven ? `<span class="chip chip-os">ОС ✓</span>` : ""}
-        ${a.feedbackText ? `<span class="chip chip-muted">заметка ОС</span>` : ""}
+        ${hasOsNote(a) ? `<span class="chip chip-os">заметка ОС</span>` : ""}
         ${a.scheduledSendAt && !a.scheduledSentAt ? `<span class="chip chip-timer">⏰ ${esc(fmtDate(a.scheduledSendAt))}</span>` : ""}
         ${a.promoCode ? `<span class="chip chip-promo">🎟 ${esc(a.promoCode)}</span>` : ""}
         ${feeChipHtml(a)}
@@ -1283,7 +1310,7 @@ ${PAY_LINK}
           "Оплачено": isPaid(a) ? "Да" : "Нет",
           "Сумма, ₽": Number(a.paidAmount) || "",
           "Промокод": a.promoCode || "",
-          "ОС": a.feedbackGiven ? "Предоставлена" : "",
+          "ОС": hasOsNote(a) ? "Есть заметка" : "",
           "Обратная связь": a.feedbackText || "",
           "Батл": a.battleLevel === "amateur" ? "Любители" : (a.battleLevel === "professional" ? "Профи" : (a.battleLevel || "")),
           "Тень": a.shadowType === "solo" ? "Соло" : (a.shadowType === "duet" ? "Дуэт" : (a.shadowType === "group" ? "Группы" : (a.shadowType || ""))),
@@ -1618,8 +1645,9 @@ ${PAY_LINK}
     const paid = apps.filter(isPaid);
     const revenue = paid.reduce((sum, a) => sum + (Number(a.paidAmount) || 0), 0);
     const promoCount = apps.filter((a) => a.promoCode).length;
-    const osYes = paid.filter((a) => a.feedbackGiven).length;
+    const osYes = paid.filter(hasOsNote).length;
     const osNo = paid.length - osYes;
+    const osLettersSent = apps.filter((a) => a.scheduledSentAt).length;
     // Сумма «слотов» категорий (может быть больше числа оплаченных заявок)
     const catSlots = paid.reduce((n, a) => n + appCategories(a).length, 0);
     if (el.appsSummaryStats) {
@@ -1628,8 +1656,9 @@ ${PAY_LINK}
         box("Категорий всего", catSlots) +
         box("Сумма, ₽", revenue) +
         box("Промокоды", promoCount) +
-        box("ОС да", osYes) +
-        box("ОС нет", osNo);
+        box("Заметка ОС", osYes) +
+        box("Без заметки ОС", osNo) +
+        box("Писем с ОС ушло", osLettersSent);
     }
     if (el.appsSummaryCats) {
       el.appsSummaryCats.innerHTML = Object.keys(CATEGORY_LABELS).map((key) => {
@@ -2175,11 +2204,6 @@ ${PAY_LINK}
       <div class="d-section-title">Статус по категориям</div>
       <p class="d-hint">Можно принять в одной категории и отклонить в другой. Участник статусы не видит.</p>
       ${perCatStatusHtml || "<p class='d-hint'>Категории не указаны.</p>"}
-      <label class="d-os-toggle">
-        <input type="checkbox" id="fb-toggle" ${a.feedbackGiven ? "checked" : ""}>
-        <span>Обратная связь (ОС) предоставлена</span>
-      </label>
-
       <div class="d-section-title">Письмо по таймеру</div>
       ${previewTpl
         ? `<p class="d-hint">Шаблон подбирается автоматически по статусу: <b>${esc(previewTpl.label)}</b>. Заметка ОС вставляется сама${(a.feedbackText || "").trim() ? "" : " — <b>пока заметка пустая</b>"}. Руками шаблон ставить не нужно.</p>
@@ -2443,7 +2467,9 @@ ${PAY_LINK}
           });
           if (res?.item) {
             a.feedbackText = res.item.feedbackText || text;
+            a.feedbackGiven = Boolean((a.feedbackText || "").trim());
             if (osView) osView.innerHTML = a.feedbackText ? esc(a.feedbackText) : "<span class='d-hint'>Пока пусто</span>";
+            renderApps();
           }
           if (osEdit.value === text) clearOsDraft(a.id);
           if (osAutosaveEl) osAutosaveEl.textContent = `Сохранено на сервере · ${new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
@@ -2576,25 +2602,6 @@ ${PAY_LINK}
         } catch (err) {
           appUnscheduleBtn.disabled = false;
           toast(`Не удалось снять таймер: ${err.message}`, "err");
-        }
-      });
-    }
-
-    // ОС — отдельная пометка этапа, не связана с «требует ответа»
-    const fbToggle = document.getElementById("fb-toggle");
-    if (fbToggle) {
-      fbToggle.addEventListener("change", async () => {
-        try {
-          const res = await api(`/api/applications/${a.id}/feedback`, {
-            method: "POST", body: JSON.stringify({ given: fbToggle.checked }),
-          });
-          Object.assign(a, res.item);
-          openAppDrawer(a.id, { preserveScroll: true });
-          renderApps();
-          toast(fbToggle.checked ? "ОС отмечена как предоставленная" : "Отметка ОС снята", "ok");
-        } catch (err) {
-          fbToggle.checked = !fbToggle.checked;
-          toast(`Не удалось сохранить: ${err.message}`, "err");
         }
       });
     }
@@ -3086,7 +3093,7 @@ ${PAY_LINK}
       }
       const ok = await showConfirm({
         title: "Поставить таймер рассылки?",
-        message: `Письма уйдут ${atEl?.value?.replace("T", " ") || "14.09 20:00"} по Москве. Шаблон подбирается по статусу, заметка ОС вставляется сама. Заявок с ОС: ${eligible.length}.${noOs ? ` Без заметки ОС — ${noOs}, их пропустим (фильтр «ОС не предоставлена» покажет).` : ""} «На рассмотрении» не трогаем.`,
+        message: `Письма уйдут ${atEl?.value?.replace("T", " ") || "14.09 20:00"} по Москве. Шаблон подбирается по статусу, заметка ОС вставляется сама. Заявок с ОС: ${eligible.length}.${noOs ? ` Без заметки ОС — ${noOs}, их пропустим (фильтр «Нет заметки ОС» покажет).` : ""} «На рассмотрении» не трогаем.`,
       });
       if (!ok) return;
       bulkScheduleBtn.disabled = true;
