@@ -736,6 +736,22 @@ body[data-bg="stage"] .alert-btn:active { background: rgba(255, 255, 255, 0.08);
 .msg-time { display: block; font-size: 10.5px; color: var(--faint); margin-top: 5px; }
 .msg-user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
 .msg-user .msg-time { color: rgba(255, 255, 255, 0.7); }
+.msg-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(154, 118, 54, 0.16);
+  color: var(--gold);
+  border: 1px solid rgba(154, 118, 54, 0.28);
+}
+.msg-user .msg-badge {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
 .msg-bot { align-self: flex-start; background: var(--surface-3); border: 1px solid var(--line-soft); border-bottom-left-radius: 5px; }
 
 @media (max-width: 760px) {

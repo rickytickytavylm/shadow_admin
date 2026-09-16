@@ -1964,6 +1964,27 @@ ${PAY_LINK}
     });
   }
 
+  function outgoingMsgBadge(m) {
+    const sentBy = String(m?.sentBy || "").trim();
+    const via = String(m?.via || "").trim();
+    if (sentBy && via) return `${sentBy} послал с ${via}`;
+    if (via) return `Леонид послал с ${via}`;
+    const kind = String(m?.kind || "").toLowerCase();
+    if (kind === "inbox") return "Леонид послал с tenichamp@inbox.eu";
+    if (kind === "auto") return "автописьмо";
+    if (kind === "template") return "шаблон";
+    return "мы";
+  }
+
+  function msgBadgeHtml(m) {
+    if (m.direction === "in") return "участник";
+    const label = outgoingMsgBadge(m);
+    if (m.sentBy || m.via || String(m.kind || "").toLowerCase() === "inbox") {
+      return `<span class="msg-badge">${esc(label)}</span>`;
+    }
+    return esc(label);
+  }
+
   // Старые записи автописьма хранят только пометку «отправлено». Показываем
   // полный текст письма, как его получил участник.
   function expandAutoMessageText(m, a) {
@@ -2046,7 +2067,7 @@ ${PAY_LINK}
           const text = expandAutoMessageText(m, a);
           return `<div class="msg msg-${incoming ? "bot" : "user"}">
             ${m.subject ? `<div class="msg-subj">${esc(m.subject)}</div>` : ""}${esc(text)}
-            <span class="msg-time">${incoming ? "участник" : (m.kind === "auto" ? "автописьмо" : (m.kind === "template" ? "шаблон" : "мы"))} · ${esc(fmtDate(m.at))}</span>
+            <span class="msg-time">${msgBadgeHtml(m)} · ${esc(fmtDate(m.at))}</span>
           </div>`;
         }).join("")}</div>`
       : `<p class="reply-hint">Переписки пока нет.</p>`;
