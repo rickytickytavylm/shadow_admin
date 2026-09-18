@@ -1553,7 +1553,10 @@ ${PAY_LINK}
       const qty = Number(t.quantity) || 1;
       card.innerHTML = `
         <div class="chat-card-top">
-          <span class="chip st-${esc(t.status || "")}">${esc(statusLabel(t.status))}</span>
+          <span class="ticket-card-chips">
+            <span class="chip st-${esc(t.status || "")}">${esc(statusLabel(t.status))}</span>
+            ${t.emailSent ? `<span class="chip chip-reply">Письмо отправлено</span>` : ""}
+          </span>
           <span class="chat-card-id">${esc(t.orderNumber || fmtDate(t.createdAt))}</span>
         </div>
         <div class="app-card-name">${esc(t.fullName || "—")}</div>
@@ -1574,6 +1577,7 @@ ${PAY_LINK}
       <span class="d-kicker">Зрительский билет</span>
       <h2 class="d-title">${esc(t.fullName || "—")}</h2>
       <span class="chip st-${esc(t.status || "")}">${esc(statusLabel(t.status))}</span>
+      ${t.emailSent ? `<span class="chip chip-reply">Письмо отправлено</span>` : ""}
 
       <div class="d-section-title">Заказ</div>
       <dl class="d-grid">
