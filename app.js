@@ -837,6 +837,30 @@ ${PAY_LINK}
     return { paid: paid.length, p2000, p1500, p0, kris, see };
   }
 
+  function ticketStatsHtml() {
+    const paid = (state.tickets || []).filter((t) => t.status === "paid");
+    const seats = paid.reduce((n, t) => n + (Number(t.quantity) || 1), 0);
+    const revenue = paid.reduce((n, t) => n + (Number(t.paidAmount) || 0), 0);
+    const unpaid = (state.tickets || []).filter((t) => t.status === "awaiting_payment").length;
+    const tb = ticketPriceBuckets();
+    const kpi = (label, val) =>
+      `<div class="stat-box"><span class="stat-val">${esc(String(val))}</span><span class="stat-label">${label}</span></div>`;
+    const mini = (n, label) =>
+      `<span class="stat-mini"><b>${esc(String(n))}</b>${esc(label)}</span>`;
+    return `
+      <div class="stat-row stat-row--kpi">
+        ${kpi("Оплачено заказов", tb.paid)}
+        ${kpi("Билетов", seats)}
+        ${kpi("Сумма, ₽", revenue.toLocaleString("ru-RU"))}
+        ${kpi("Не оплачено", unpaid)}
+      </div>
+      <div class="stat-mini-row">
+        ${mini(tb.p2000, "по 2000 ₽")}
+        ${mini(tb.p1500, "KRISBRO · 1500 ₽")}
+        ${mini(tb.p0, "SEEYOUSOON · 0 ₽")}
+      </div>`;
+  }
+
   function buildAppCardHtml(a) {
     const msgs = Array.isArray(a.messages) ? a.messages : [];
     const nr = needsReply(a);
@@ -1539,23 +1563,7 @@ ${PAY_LINK}
 
   function renderTickets() {
     if (!el.ticketsList) return;
-    const paid = (state.tickets || []).filter((t) => t.status === "paid");
-    const seats = paid.reduce((n, t) => n + (Number(t.quantity) || 1), 0);
-    const revenue = paid.reduce((n, t) => n + (Number(t.paidAmount) || 0), 0);
-    const unpaid = (state.tickets || []).filter((t) => t.status === "awaiting_payment").length;
-    const box = (label, val) =>
-      `<div class="stat-box"><span class="stat-val">${val}</span><span class="stat-label">${label}</span></div>`;
-    const buckets = ticketPriceBuckets();
-    if (el.ticketsStats) {
-      el.ticketsStats.innerHTML =
-        box("Оплачено заказов", paid.length) +
-        box("Билетов", seats) +
-        box("Сумма, ₽", revenue.toLocaleString("ru-RU")) +
-        box("Не оплачено", unpaid) +
-        box("2000 ₽", buckets.p2000) +
-        box("1500 ₽ · KRISBRO", buckets.p1500) +
-        box("0 ₽ · SEEYOUSOON", buckets.p0);
-    }
+    if (el.ticketsStats) el.ticketsStats.innerHTML = ticketStatsHtml();
     const items = filteredTickets();
     el.ticketsList.innerHTML = "";
     if (el.ticketsEmpty) {
@@ -1745,16 +1753,7 @@ ${PAY_LINK}
         Object.keys(CATEGORY_LABELS).filter((k) => feeByCat[k]).map((k) => box(CATEGORY_LABELS[k] + " · кат.", feeByCat[k])).join("") +
         Object.entries(feeByPromo).map(([p, n]) => box(p, n)).join("");
     }
-    if (el.ticketsSummaryStats) {
-      const tb = ticketPriceBuckets();
-      el.ticketsSummaryStats.innerHTML =
-        box("Оплачено", tb.paid) +
-        box("2000 ₽", tb.p2000) +
-        box("1500 ₽", tb.p1500) +
-        box("0 ₽", tb.p0) +
-        box("KRISBRO", tb.kris) +
-        box("SEEYOUSOON", tb.see);
-    }
+    if (el.ticketsSummaryStats) el.ticketsSummaryStats.innerHTML = ticketStatsHtml();
     if (el.feeUnpaidArchiveList) {
       const unpaid = (state.apps || []).filter(isFeeUnpaid)
         .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || "", "ru"));

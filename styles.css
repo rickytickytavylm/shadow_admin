@@ -363,6 +363,30 @@ body[data-bg="stage"] .app-spinner { border-color: rgba(255, 255, 255, 0.22); bo
 .section-kicker-sm { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); }
 .analytics-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin: 4px 0 14px; color: var(--ink); }
 .stat-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.stat-row--kpi {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .stat-row--kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.stat-row--kpi .stat-box { min-width: 0; flex: none; }
+.stat-row--kpi .stat-val {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.stat-mini-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.stat-mini {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+.stat-mini b { color: var(--ink); font-weight: 700; margin-right: 4px; }
 .stat-box {
   flex: 1 1 auto;
   min-width: 92px;
