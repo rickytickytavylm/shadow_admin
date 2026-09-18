@@ -681,7 +681,7 @@ ${PAY_LINK}
     const st = el.statusFilter.value;
     const extra = el.extraFilter ? el.extraFilter.value : "";
     const promo = el.promoFilter ? el.promoFilter.value : "";
-    return state.apps.filter((a) => {
+    const list = state.apps.filter((a) => {
       if (state.onlyNeedsReply && !needsReply(a)) return false;
       if (cat && !hasCategory(a, cat)) return false;
       // В разрезе категории показываем только оплаченные (если выбран статус «все» или «оплачено»).
@@ -705,6 +705,15 @@ ${PAY_LINK}
       }
       return true;
     });
+    if (extra === "has_messages") {
+      return list.slice().sort((a, b) => {
+        const tb = lastOutgoingAt(b);
+        const ta = lastOutgoingAt(a);
+        if (tb !== ta) return tb > ta ? 1 : -1;
+        return (a.createdAt < b.createdAt ? 1 : -1);
+      });
+    }
+    return list;
   }
 
   function statusChip(status) {
@@ -742,6 +751,15 @@ ${PAY_LINK}
 
   function hasRealCorrespondence(a) {
     return realCorrespondenceMessages(a).length > 0;
+  }
+
+  function lastOutgoingAt(a) {
+    let t = "";
+    for (const m of (Array.isArray(a.messages) ? a.messages : [])) {
+      if (m.direction !== "out" || !m.at) continue;
+      if (m.at > t) t = m.at;
+    }
+    return t;
   }
 
   function fillTemplateBody(tpl, a) {
