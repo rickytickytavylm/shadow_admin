@@ -707,9 +707,9 @@ ${PAY_LINK}
     });
     if (extra === "has_messages") {
       return list.slice().sort((a, b) => {
-        const tb = lastOutgoingAt(b);
-        const ta = lastOutgoingAt(a);
-        if (tb !== ta) return tb > ta ? 1 : -1;
+        const tb = lastCorrespondenceAt(b);
+        const ta = lastCorrespondenceAt(a);
+        if (tb !== ta) return ta > tb ? -1 : 1;
         return (a.createdAt < b.createdAt ? 1 : -1);
       });
     }
@@ -753,11 +753,10 @@ ${PAY_LINK}
     return realCorrespondenceMessages(a).length > 0;
   }
 
-  function lastOutgoingAt(a) {
+  function lastCorrespondenceAt(a) {
     let t = "";
-    for (const m of (Array.isArray(a.messages) ? a.messages : [])) {
-      if (m.direction !== "out" || !m.at) continue;
-      if (m.at > t) t = m.at;
+    for (const m of realCorrespondenceMessages(a)) {
+      if (m.at && m.at > t) t = m.at;
     }
     return t;
   }
@@ -861,6 +860,15 @@ ${PAY_LINK}
       </div>`;
   }
 
+  function appCardDate(a) {
+    const extra = el.extraFilter ? el.extraFilter.value : "";
+    if (extra === "has_messages") {
+      const at = lastCorrespondenceAt(a);
+      return at ? `Письмо · ${fmtDate(at)}` : fmtDate(a.createdAt);
+    }
+    return fmtDate(a.createdAt);
+  }
+
   function buildAppCardHtml(a) {
     const msgs = Array.isArray(a.messages) ? a.messages : [];
     const nr = needsReply(a);
@@ -888,7 +896,7 @@ ${PAY_LINK}
       <div class="app-card-top">
         <div>
           <div class="app-card-name">${esc(a.fullName || "Без имени")}</div>
-          <div class="app-card-date">${esc(fmtDate(a.createdAt))}</div>
+          <div class="app-card-date">${esc(appCardDate(a))}</div>
         </div>
       </div>
       <div class="app-card-cats">${cardCatsHtml || "—"}</div>
