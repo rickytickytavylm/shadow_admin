@@ -969,7 +969,9 @@ ${PAY_LINK}
     const items = cats.map((c) => {
       if (c === "battle") return "";
       const f = forms.find((x) => x.category === c);
-      const link = `https://xn----7sbocmxidei1bb9cwe.xn--p1ai/anketa.html?id=${encodeURIComponent(a.id)}&cat=${encodeURIComponent(c)}`;
+      const q = new URLSearchParams({ id: a.id, cat: c });
+      if (a.formToken) q.set("key", a.formToken);
+      const link = `https://xn----7sbocmxidei1bb9cwe.xn--p1ai/anketa.html?${q}`;
       if (!f) {
         return `<div class="form-card"><div class="form-card-head"><b>${esc(catLabel(c))}</b><span class="chip chip-muted">Не заполнена</span></div>
           <div class="os-note-actions"><button type="button" class="btn btn-ghost" data-copy-link="${esc(link)}">Скопировать ссылку на анкету</button></div></div>`;
