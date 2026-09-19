@@ -205,6 +205,7 @@ ${PAY_LINK}
     collaboration: "Коллаборация",
     coproduction: "Сопродюсирование",
     contact: "Связаться",
+    info: "Инфоподдержка",
     support: "Поддержка",
     vip: "VIP-ложа",
   };
@@ -1521,7 +1522,7 @@ ${PAY_LINK}
         ${row("Email", s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : "—")}
         ${row("Телефон", s.phone ? `<a href="tel:${esc(s.phone)}">${esc(s.phone)}</a>` : "—")}
         ${row("Telegram", esc(s.telegram || "—"))}
-        ${s.amount ? row("Сумма", esc(s.amount.toLocaleString("ru-RU") + " ₽")) : ""}
+        ${s.amount ? row("Сумма", esc(s.amount.toLocaleString("ru-RU") + " ₽") + (s.paid ? " · оплачено" : (s.paymentId ? " · ожидает оплату" : ""))) : ""}
       </dl>
 
       <div class="d-section-title">Комментарий</div>
