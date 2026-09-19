@@ -208,6 +208,7 @@ ${PAY_LINK}
     info: "Инфоподдержка",
     support: "Поддержка",
     vip: "VIP-ложа",
+    gift: "Подарок",
   };
   const SPONSOR_STATUS_LABELS = { new: "Новая", handled: "Обработана", archived: "Архив" };
   const SPONSOR_STATUS_ORDER = ["new", "handled", "archived"];
