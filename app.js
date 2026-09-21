@@ -306,11 +306,15 @@ ${PAY_LINK}
   function catLabel(c) { return CATEGORY_LABELS[c] || c || "—"; }
   function statusLabel(s) { return STATUS_LABELS[s] || s || "new"; }
 
-  // Если основной адрес (RU-прокси) не отвечает за 8 секунд или падает по сети,
-  // переключаемся на прямой адрес Railway и запоминаем это до перезагрузки.
+  // Если RU-прокси не отвечает, уходим на прямой Railway и помним это в вкладке.
   const FALLBACK_API_BASE = (window.SHADOW_ADMIN_CONFIG?.FALLBACK_API_BASE || "").replace(/\/$/, "");
+  const API_FB_KEY = "shadow_admin_api_fallback_until";
   let activeApiBase = API_BASE;
-  let apiFallbackNotified = false;
+  try {
+    if (FALLBACK_API_BASE && Number(sessionStorage.getItem(API_FB_KEY) || 0) > Date.now()) {
+      activeApiBase = FALLBACK_API_BASE;
+    }
+  } catch {}
   async function fetchWithTimeout(url, options, ms) {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
@@ -320,18 +324,35 @@ ${PAY_LINK}
       clearTimeout(t);
     }
   }
+  let apiReady = null;
+  function resolveApiBase() {
+    if (apiReady) return apiReady;
+    apiReady = (async () => {
+      if (!FALLBACK_API_BASE || activeApiBase !== API_BASE) return;
+      const probe = (base) => fetchWithTimeout(`${base}/health`, {}, 2500)
+        .then((res) => {
+          if (!res.ok) throw new Error("bad");
+          return base;
+        });
+      try {
+        activeApiBase = await Promise.any([probe(FALLBACK_API_BASE), probe(API_BASE)]);
+        if (activeApiBase === FALLBACK_API_BASE) {
+          try { sessionStorage.setItem(API_FB_KEY, String(Date.now() + 30 * 60 * 1000)); } catch {}
+        }
+      } catch {}
+    })();
+    return apiReady;
+  }
   async function apiFetch(path, options) {
+    await resolveApiBase();
     if (!FALLBACK_API_BASE || activeApiBase !== API_BASE) {
       return fetchWithTimeout(`${activeApiBase}${path}`, options, 25000);
     }
     try {
-      return await fetchWithTimeout(`${API_BASE}${path}`, options, 8000);
+      return await fetchWithTimeout(`${API_BASE}${path}`, options, 4000);
     } catch (err) {
       activeApiBase = FALLBACK_API_BASE;
-      if (!apiFallbackNotified) {
-        apiFallbackNotified = true;
-        toast("Основной сервер не отвечает, работаем через запасной адрес", "err");
-      }
+      try { sessionStorage.setItem(API_FB_KEY, String(Date.now() + 30 * 60 * 1000)); } catch {}
       return fetchWithTimeout(`${FALLBACK_API_BASE}${path}`, options, 25000);
     }
   }
@@ -389,6 +410,7 @@ ${PAY_LINK}
   async function syncFreshData({ fetchInbox = false, silent = false } = {}) {
     if (!getToken() || el.app.hidden || syncing) return;
     syncing = true;
+    await resolveApiBase();
     const firstLoad = !state.booted;
     if (firstLoad) setLoading(true);
     try {
