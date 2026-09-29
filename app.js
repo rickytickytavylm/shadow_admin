@@ -1005,6 +1005,7 @@ ${PAY_LINK}
             "Телефон": a.phone || "",
             "Instagram": a.instagram || "",
             "Telegram": a.telegram || "",
+            "Город": a.city || "",
             "Категория": catLabel(f.category),
             "Формат": FORM_FORMAT_LABELS[f.format] || f.format,
             "Дата заполнения": f.submittedAt ? fmtDate(f.submittedAt) : (f.updatedAt ? fmtDate(f.updatedAt) + " (черновик)" : ""),
@@ -1017,7 +1018,7 @@ ${PAY_LINK}
           return row;
         });
       const ws = XLSX.utils.json_to_sheet(rows);
-      const firstCols = [26, 22, 26, 16, 16, 16, 22, 10, 18, 14, 12];
+      const firstCols = [26, 22, 26, 16, 16, 16, 16, 22, 10, 18, 14, 12];
       ws["!cols"] = [...firstCols, ...qs.map(() => ({ wch: 28 })).map((x) => x.wch), ...consents.map(() => 14), 40].map((wch) => ({ wch }));
       if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
       const wb = XLSX.utils.book_new();
@@ -1277,6 +1278,8 @@ ${PAY_LINK}
         "Email": a.email || "",
         "Телефон": a.phone || "",
         "Telegram": a.telegram || "",
+        "Instagram": a.instagram || "",
+        "Город": a.city || "",
         "Категории (взнос)": (a.feeStatus === "paid" ? (a.feeCategories || []) : payableCategories(a)).map(catLabel).join(", "),
         "Участников": a.feeParticipants || "",
         "Статус взноса": a.feeStatus === "paid" ? "Оплачен" : (a.feeStatus === "awaiting_payment" ? "Начал оплату" : "Не оплачен"),
@@ -1286,7 +1289,7 @@ ${PAY_LINK}
         "ID платежа": a.feePaymentId || "",
       }));
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws["!cols"] = [17, 26, 26, 16, 16, 30, 10, 16, 12, 14, 14, 30].map((wch) => ({ wch }));
+      ws["!cols"] = [17, 26, 26, 16, 16, 18, 16, 30, 10, 16, 12, 14, 14, 30].map((wch) => ({ wch }));
       if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Взносы");
