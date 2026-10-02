@@ -136,13 +136,11 @@ ${PAY_LINK}
     tabChatsCount: document.getElementById("tab-chats-count"),
     tabSponsorsCount: document.getElementById("tab-sponsors-count"),
     tabTicketsCount: document.getElementById("tab-tickets-count"),
-    tabShowCount: document.getElementById("tab-show-count"),
     tabAnalyticsCount: document.getElementById("tab-analytics-count"),
     viewApps: document.getElementById("view-apps"),
     viewChats: document.getElementById("view-chats"),
     viewSponsors: document.getElementById("view-sponsors"),
     viewTickets: document.getElementById("view-tickets"),
-    viewShow: document.getElementById("view-show"),
     viewAnalytics: document.getElementById("view-analytics"),
     showList: document.getElementById("show-list"),
     showEmpty: document.getElementById("show-empty"),
@@ -452,8 +450,7 @@ ${PAY_LINK}
       setBadge(el.tabChatsCount, state.chats.length);
       setBadge(el.tabSponsorsCount, state.sponsors.filter((s) => (s.status || "new") === "new").length);
       setBadge(el.tabTicketsCount, state.tickets.filter((t) => t.status === "paid").reduce((n, t) => n + (Number(t.quantity) || 1), 0));
-      setBadge(el.tabShowCount, state.showLeads.filter((s) => (s.status || "new") === "new").length);
-      setBadge(el.tabAnalyticsCount, state.analyticsStats.today || 0);
+      setBadge(el.tabAnalyticsCount, state.showLeads.filter((s) => (s.status || "new") === "new").length);
       renderApps();
       renderChats();
       renderSponsors();
@@ -1573,7 +1570,7 @@ ${PAY_LINK}
             method: "POST", body: JSON.stringify({ status }),
           });
           Object.assign(s, res.item);
-          setBadge(el.tabShowCount, state.showLeads.filter((x) => (x.status || "new") === "new").length);
+          setBadge(el.tabAnalyticsCount, state.showLeads.filter((x) => (x.status || "new") === "new").length);
           renderShowLeads();
           openShowDrawer(s.id, { preserveScroll: true });
           toast(`Статус: ${SPONSOR_STATUS_LABELS[status] || status}`, "ok");
@@ -3225,7 +3222,6 @@ ${PAY_LINK}
     if (el.viewSponsors) el.viewSponsors.hidden = tab !== "sponsors";
     if (el.viewFees) el.viewFees.hidden = tab !== "fees";
     if (el.viewTickets) el.viewTickets.hidden = tab !== "tickets";
-    if (el.viewShow) el.viewShow.hidden = tab !== "show";
     if (el.viewAnalytics) el.viewAnalytics.hidden = tab !== "analytics";
   }
 
