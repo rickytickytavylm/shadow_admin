@@ -167,6 +167,11 @@ ${PAY_LINK}
     analyticsList: document.getElementById("analytics-list"),
     analyticsEmpty: document.getElementById("analytics-empty"),
     analyticsStats: document.getElementById("analytics-stats"),
+    analyticsPeriod: document.getElementById("analytics-period"),
+    analyticsSource: document.getElementById("analytics-source"),
+    analyticsSources: document.getElementById("analytics-sources"),
+    analyticsButtons: document.getElementById("analytics-buttons"),
+    analyticsDays: document.getElementById("analytics-days"),
     sponsorsList: document.getElementById("sponsors-list"),
     sponsorsEmpty: document.getElementById("sponsors-empty"),
     sponsorsSearch: document.getElementById("sponsors-search"),
@@ -224,6 +229,8 @@ ${PAY_LINK}
     events: [],
     deletedApps: [],
     analyticsStats: { total: 0, today: 0, last7: 0, last30: 0, uniqueDevices: 0 },
+    analyticsPeriod: "30",
+    analyticsSource: "",
     emailEnabled: false,
     inboxEnabled: false,
     tab: "apps",
@@ -424,7 +431,7 @@ ${PAY_LINK}
         api("/api/sponsors?limit=1000").catch(() => ({ items: [] })),
         api("/api/tickets?limit=2000").catch(() => ({ items: [] })),
         api("/api/show-leads?limit=1000").catch(() => ({ items: [] })),
-        api("/api/events?type=vinovnali_click&limit=1000").catch(() => ({ items: [], stats: null })),
+        api("/api/events?limit=5000").catch(() => ({ items: [], stats: null })),
         api("/api/applications/deleted/list?limit=300").catch(() => ({ items: [] })),
         api("/api/forms").catch(() => ({ items: [] })),
         state.formSchema ? Promise.resolve(null) : api("/api/forms/schema").catch(() => null),
@@ -1705,7 +1712,7 @@ ${PAY_LINK}
   function renderAnalytics() {
     if (!el.analyticsList) return;
     const box = (label, val) =>
-      `<div class="stat-box"><span class="stat-val">${Number(val) || 0}</span><span class="stat-label">${label}</span></div>`;
+      `<div class="stat-box"><span class="stat-val">${esc(val ?? 0)}</span><span class="stat-label">${label}</span></div>`;
 
     // Сводка по оплаченным заявкам
     const apps = state.apps || [];
@@ -1842,30 +1849,159 @@ ${PAY_LINK}
       el.deletedArchiveList.appendChild(frag);
     }
 
-    const s = state.analyticsStats || {};
+    const sourceLabels = {
+      direct: "Прямой заход",
+      instagram: "Instagram",
+      telegram: "Telegram",
+      vc_ru: "VC.ru",
+      vk: "ВКонтакте",
+      google: "Google",
+      yandex: "Яндекс",
+      shadow_championship: "Чемпионат «Тень»",
+      golden_ring: "Театр «Золотое кольцо»",
+      kudago_legacy: "KudaGo · старая ссылка",
+      legacy_site: "Старый vinovnali.ru",
+      internal: "Внутренний переход",
+    };
+    const classifySource = (e) => {
+      if (e.meta?.source) return e.meta.source;
+      const ref = String(e.referrer || "").toLowerCase();
+      if (ref.includes("kudago.com")) return "kudago_legacy";
+      if (ref.includes("vinovnali.ru")) return "legacy_site";
+      if (ref.includes("instagram.com")) return "instagram";
+      if (ref.includes("t.me") || ref.includes("telegram")) return "telegram";
+      if (ref.includes("vk.")) return "vk";
+      if (ref.includes("vc.ru")) return "vc_ru";
+      if (ref.includes("google.")) return "google";
+      if (ref.includes("yandex.") || ref.includes("ya.ru")) return "yandex";
+      if (e.type === "vinovnali_click" || ref.includes("7sbocmxidei1bb9cwe")) return "shadow_championship";
+      return ref ? "referral" : "direct";
+    };
+    const sourceTitle = (key) => sourceLabels[key] || key || "Не определён";
+    const allItems = state.events || [];
+    const sourceKeys = [...new Set(allItems.map(classifySource))].sort((a, b) =>
+      sourceTitle(a).localeCompare(sourceTitle(b), "ru")
+    );
+
+    if (el.analyticsPeriod) {
+      el.analyticsPeriod.value = state.analyticsPeriod;
+      el.analyticsPeriod.onchange = () => {
+        state.analyticsPeriod = el.analyticsPeriod.value;
+        renderAnalytics();
+      };
+    }
+    if (el.analyticsSource) {
+      el.analyticsSource.innerHTML = `<option value="">Все источники</option>${sourceKeys
+        .map((key) => `<option value="${esc(key)}">${esc(sourceTitle(key))}</option>`).join("")}`;
+      el.analyticsSource.value = state.analyticsSource;
+      el.analyticsSource.onchange = () => {
+        state.analyticsSource = el.analyticsSource.value;
+        renderAnalytics();
+      };
+    }
+
+    const periodDays = state.analyticsPeriod === "all" ? null : Number(state.analyticsPeriod || 30);
+    const cutoff = periodDays ? Date.now() - periodDays * 86_400_000 : 0;
+    const items = allItems.filter((e) => {
+      const inPeriod = !cutoff || new Date(e.createdAt).getTime() >= cutoff;
+      const inSource = !state.analyticsSource || classifySource(e) === state.analyticsSource;
+      return inPeriod && inSource;
+    });
+    const pageViews = items.filter((e) => e.type === "page_view");
+    const buttonClicks = items.filter((e) => e.type === "button_click");
+    const ticketClicks = items.filter((e) => e.type === "ticket_click");
+    const visitors = new Set(pageViews.map((e) => e.deviceId).filter(Boolean)).size;
+    const ctr = pageViews.length ? Math.round((ticketClicks.length / pageViews.length) * 1000) / 10 : 0;
+
     if (el.analyticsStats) {
       el.analyticsStats.innerHTML =
-        box("Всего", s.total) +
-        box("Сегодня", s.today) +
-        box("7 дней", s.last7) +
-        box("30 дней", s.last30) +
-        box("Устройств", s.uniqueDevices);
+        box("Посещения", pageViews.length) +
+        box("Посетители", visitors) +
+        box("Все кнопки", buttonClicks.length + ticketClicks.length) +
+        box("К билетам", ticketClicks.length) +
+        box("CTR к билетам", `${ctr}%`);
     }
-    const items = state.events || [];
+
+    const rankHtml = (rows, empty) => rows.length
+      ? rows.map((row) => `<div class="analytics-rank">
+          <strong>${esc(row.title)}</strong><span>${row.value}</span>
+          ${row.note ? `<small>${esc(row.note)}</small>` : ""}
+        </div>`).join("")
+      : `<p class="analytics-empty-mini">${esc(empty)}</p>`;
+
+    const bySource = new Map();
+    for (const e of items) {
+      const key = classifySource(e);
+      if (!bySource.has(key)) bySource.set(key, { views: 0, clicks: 0, tickets: 0, devices: new Set() });
+      const row = bySource.get(key);
+      if (e.type === "page_view") row.views += 1;
+      if (e.type === "button_click" || e.type === "ticket_click") row.clicks += 1;
+      if (e.type === "ticket_click") row.tickets += 1;
+      if (e.deviceId) row.devices.add(e.deviceId);
+    }
+    const sourceRows = [...bySource.entries()]
+      .map(([key, row]) => ({
+        title: sourceTitle(key),
+        value: row.views || row.clicks,
+        note: `${row.devices.size} посет. · ${row.clicks} кликов · ${row.tickets} к билетам`,
+      }))
+      .sort((a, b) => b.value - a.value);
+    if (el.analyticsSources) {
+      el.analyticsSources.innerHTML = rankHtml(sourceRows, "Источники появятся после первых посещений.");
+    }
+
+    const byButton = new Map();
+    for (const e of items.filter((x) => x.type === "button_click" || x.type === "ticket_click")) {
+      const label = e.meta?.label || (e.type === "ticket_click" ? "Купить билет" : "Без названия");
+      byButton.set(label, (byButton.get(label) || 0) + 1);
+    }
+    const buttonRows = [...byButton.entries()]
+      .map(([title, value]) => ({ title, value, note: "" }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 15);
+    if (el.analyticsButtons) {
+      el.analyticsButtons.innerHTML = rankHtml(buttonRows, "Нажатий пока нет.");
+    }
+
+    const byDay = new Map();
+    for (const e of items) {
+      const day = new Date(e.createdAt).toLocaleDateString("ru-RU");
+      if (!byDay.has(day)) byDay.set(day, { views: 0, clicks: 0, tickets: 0, time: new Date(e.createdAt).setHours(0, 0, 0, 0) });
+      const row = byDay.get(day);
+      if (e.type === "page_view") row.views += 1;
+      if (e.type === "button_click" || e.type === "ticket_click") row.clicks += 1;
+      if (e.type === "ticket_click") row.tickets += 1;
+    }
+    const dayRows = [...byDay.entries()]
+      .map(([title, row]) => ({ title, value: row.views, note: `${row.clicks} кликов · ${row.tickets} к билетам`, time: row.time }))
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 31);
+    if (el.analyticsDays) {
+      el.analyticsDays.innerHTML = rankHtml(dayRows, "Данных по дням пока нет.");
+    }
+
+    const typeLabels = {
+      page_view: "Посещение",
+      button_click: "Кнопка",
+      ticket_click: "К билетам",
+      vinovnali_click: "Промо чемпионата",
+    };
     el.analyticsList.innerHTML = "";
     el.analyticsEmpty.hidden = items.length > 0;
     const frag = document.createDocumentFragment();
-    for (const e of items) {
+    for (const e of items.slice(0, 100)) {
       const dev = e.deviceId ? esc(e.deviceId.slice(0, 12)) + "…" : "—";
+      const label = e.meta?.label || typeLabels[e.type] || e.type;
       const card = document.createElement("div");
       card.className = "chat-card chat-card--static";
       card.innerHTML = `
         <div class="chat-card-top">
-          <span class="chip chip-os">Купить билет</span>
+          <span class="chip chip-os">${esc(typeLabels[e.type] || e.type)}</span>
           <span class="chat-card-id">${esc(fmtDate(e.createdAt))}</span>
         </div>
+        <div class="app-card-name">${esc(label)}</div>
         <div class="chat-card-meta">
-          <span>device: ${dev}</span>
+          <span>${esc(sourceTitle(classifySource(e)))} · device: ${dev}</span>
         </div>`;
       frag.appendChild(card);
     }

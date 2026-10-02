@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260914h">
+  <link rel="stylesheet" href="styles.css?v=20261002a">
 </head>
 <body>
   <div class="bg-orb bg-orb--1"></div>
@@ -238,11 +238,39 @@
       </div>
       <div class="analytics-head" style="margin-top:28px">
         <span class="section-kicker-sm">Спектакль «Виновна ли?»</span>
-        <h2 class="analytics-title">Клики по кнопке «Купить билет»</h2>
+        <h2 class="analytics-title">Источники · кнопки · переходы к билетам</h2>
+        <div class="analytics-filters">
+          <label>Период
+            <select id="analytics-period">
+              <option value="7">7 дней</option>
+              <option value="30" selected>30 дней</option>
+              <option value="90">90 дней</option>
+              <option value="all">Всё время</option>
+            </select>
+          </label>
+          <label>Источник
+            <select id="analytics-source"><option value="">Все источники</option></select>
+          </label>
+        </div>
         <div id="analytics-stats" class="stat-row"></div>
       </div>
+      <div class="analytics-breakdowns">
+        <section class="analytics-panel">
+          <h3>Источники</h3>
+          <div id="analytics-sources"></div>
+        </section>
+        <section class="analytics-panel">
+          <h3>Топ кнопок</h3>
+          <div id="analytics-buttons"></div>
+        </section>
+        <section class="analytics-panel analytics-panel--wide">
+          <h3>По дням</h3>
+          <div id="analytics-days"></div>
+        </section>
+      </div>
+      <h3 class="analytics-subtitle">Последние события</h3>
       <div id="analytics-list" class="chats-list"></div>
-      <p id="analytics-empty" class="empty-state" hidden>Кликов пока нет.</p>
+      <p id="analytics-empty" class="empty-state" hidden>Событий пока нет.</p>
     </section>
 
     <!-- Нижняя навигация -->
@@ -338,6 +366,6 @@
     }
   </script>
   <script src="config.js?v=20260914b"></script>
-  <script src="app.js?v=20260929a"></script>
+  <script src="app.js?v=20261002a"></script>
 </body>
 </html>
