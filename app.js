@@ -546,7 +546,7 @@ ${PAY_LINK}
   }
 
   function isFeeUnpaid(a) {
-    return a.feeStatus !== "paid" && a.status !== "awaiting_payment" && payableCategories(a).length > 0;
+    return !battleFeePaid(a) && a.status !== "awaiting_payment" && payableCategories(a).length > 0;
   }
 
   // Источник правды — текст заметки, не галочка «ОС предоставлена».
@@ -728,7 +728,7 @@ ${PAY_LINK}
       if (extra === "form_no" && (!payableCategories(a).length || formsSubmitted(a).length >= payableCategories(a).length)) return false;
       if (extra === "fee_form_no" && (!payableCategories(a).length || (a.feeStatus === "paid" && formsSubmitted(a).length >= payableCategories(a).length))) return false;
       if (q) {
-        const hay = `${a.fullName} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city} ${a.promoCode || ""}`.toLowerCase();
+        const hay = `${a.fullName} ${a.firstName || ""} ${a.lastName || ""} ${a.stageName || ""} ${a.email} ${a.phone} ${a.telegram} ${a.instagram} ${a.city} ${a.promoCode || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -790,7 +790,7 @@ ${PAY_LINK}
   }
 
   function fillTemplateBody(tpl, a) {
-    const firstName = (a.fullName || "").trim().split(/\s+/)[0] || "";
+    const firstName = (a.firstName || (a.fullName || "").trim().split(/\s+/)[0] || "").trim();
     const os = (a.feedbackText || "").trim();
     return tpl.body
       .replace(/\[Имя\]/g, firstName || "[Имя]")
@@ -1044,9 +1044,8 @@ ${PAY_LINK}
     if (!acc.length && !forms.length && !later.length) return "";
     const cats = [...new Set([...acc, ...forms.map((f) => f.category)])];
     const laterHtml = later.map((c) => `<div class="form-card"><div class="form-card-head"><b>${esc(catLabel(c))}</b><span class="chip chip-muted">Позже</span></div>
-      <p class="d-hint">Анкета и оплата батлов откроются ближе к ноябрю. Приём заявок — до 14 ноября.</p></div>`).join("");
+      <p class="d-hint">Анкета по этой категории пока недоступна.</p></div>`).join("");
     const items = cats.map((c) => {
-      if (c === "battle") return "";
       const f = forms.find((x) => x.category === c);
       const q = new URLSearchParams({ id: a.id, cat: c });
       if (a.formToken) q.set("key", a.formToken);
@@ -1114,10 +1113,14 @@ ${PAY_LINK}
     return appCategories(a).filter((c) => categoryStatus(a, c) === "accepted");
   }
   function payableCategories(a) {
-    return acceptedCategories(a).filter((c) => c !== "battle");
+    return acceptedCategories(a).filter((c) => c === "battle");
   }
-  function laterCategories(a) {
-    return appCategories(a).filter((c) => c === "battle");
+  function laterCategories() { return []; }
+  function battleFeePaid(a) {
+    return Boolean(a.feePaidAt) && (a.feeCategories || []).includes("battle");
+  }
+  function battleFeePending(a) {
+    return !battleFeePaid(a) && a.feeStatus === "awaiting_payment" && payableCategories(a).includes("battle");
   }
   function feeKind(a, cat) {
     if (cat === "battle") return "battle";
@@ -1148,16 +1151,13 @@ ${PAY_LINK}
         rows.push(row(catLabel(c), `<span class="chip chip-muted">Не оплачен</span> · ${esc(fmtRub(amt))}`));
       }
     }
-    for (const c of laterCategories(a)) {
-      rows.push(row(catLabel(c), `<span class="chip chip-muted">Оплата позже</span> · приём до 14 ноября`));
-    }
     return rows.join("");
   }
   function feeChipHtml(a) {
-    if (a.feeStatus === "paid") {
+    if (battleFeePaid(a)) {
       return `<span class="chip st-paid"><span class="status-dot"></span>Взнос ${esc((Number(a.feeAmount) || 0).toLocaleString("ru-RU"))} ₽${a.feePromo ? " · " + esc(a.feePromo) : ""}</span>`;
     }
-    if (a.feeStatus === "awaiting_payment") {
+    if (battleFeePending(a)) {
       return `<span class="chip st-awaiting_payment"><span class="status-dot"></span>Взнос: начал оплату</span>`;
     }
     if (payableCategories(a).length && a.status !== "awaiting_payment") {
@@ -1168,7 +1168,7 @@ ${PAY_LINK}
   function fmtRub(n) { return `${(Number(n) || 0).toLocaleString("ru-RU")} ₽`; }
 
   function feeCandidates() {
-    return (state.apps || []).filter((a) => a.feeStatus === "paid" || (a.status !== "awaiting_payment" && payableCategories(a).length));
+    return (state.apps || []).filter((a) => battleFeePaid(a) || (a.status !== "awaiting_payment" && payableCategories(a).length));
   }
 
   function filteredFees() {
@@ -1178,12 +1178,12 @@ ${PAY_LINK}
     const promo = el.feesPromoFilter ? el.feesPromoFilter.value : "";
     return feeCandidates()
       .filter((a) => {
-        if (st === "paid") return a.feeStatus === "paid";
-        if (st === "awaiting_payment") return a.feeStatus === "awaiting_payment";
-        if (st === "unpaid") return a.feeStatus !== "paid";
+        if (st === "paid") return battleFeePaid(a);
+        if (st === "awaiting_payment") return battleFeePending(a);
+        if (st === "unpaid") return !battleFeePaid(a);
         return true;
       })
-      .filter((a) => !cat || (a.feeStatus === "paid" ? (a.feeCategories || []).includes(cat) : payableCategories(a).includes(cat)))
+      .filter((a) => !cat || (battleFeePaid(a) ? (a.feeCategories || []).includes(cat) : payableCategories(a).includes(cat)))
       .filter((a) => {
         if (!promo) return true;
         const code = (a.feePromo || "").toUpperCase();
@@ -1203,7 +1203,7 @@ ${PAY_LINK}
     const current = el.feesCategoryFilter.value;
     const cats = new Set();
     feeCandidates().forEach((a) => {
-      (a.feeStatus === "paid" ? (a.feeCategories || []) : payableCategories(a)).forEach((c) => cats.add(c));
+      (battleFeePaid(a) ? (a.feeCategories || []).filter((c) => c === "battle") : payableCategories(a)).forEach((c) => cats.add(c));
     });
     el.feesCategoryFilter.innerHTML = `<option value="">Все категории</option>` +
       [...cats].sort().map((c) => `<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join("");
@@ -1214,11 +1214,11 @@ ${PAY_LINK}
     if (!el.feesList) return;
     fillFeesCategoryFilter();
     const all = feeCandidates();
-    const paid = all.filter((a) => a.feeStatus === "paid");
+    const paid = all.filter(battleFeePaid);
     const revenue = paid.reduce((s, a) => s + (Number(a.feeAmount) || 0), 0);
-    const started = all.filter((a) => a.feeStatus === "awaiting_payment").length;
-    const unpaid = all.filter((a) => a.feeStatus !== "paid").length;
-    const expectedUnpaid = all.filter((a) => a.feeStatus !== "paid").reduce((s, a) => s + feeExpected(a), 0);
+    const started = all.filter(battleFeePending).length;
+    const unpaid = all.filter((a) => !battleFeePaid(a)).length;
+    const expectedUnpaid = all.filter((a) => !battleFeePaid(a)).reduce((s, a) => s + feeExpected(a), 0);
     const byCat = {};
     paid.forEach((a) => (a.feeCategories || []).forEach((c) => { byCat[c] = (byCat[c] || 0) + 1; }));
     const byPromo = {};
@@ -1249,10 +1249,10 @@ ${PAY_LINK}
       card.type = "button";
       card.className = "chat-card";
       card.addEventListener("click", () => openAppFromList(a.id));
-      const cats = a.feeStatus === "paid" ? (a.feeCategories || []) : payableCategories(a);
-      const chip = a.feeStatus === "paid"
+      const cats = battleFeePaid(a) ? (a.feeCategories || []).filter((c) => c === "battle") : payableCategories(a);
+      const chip = battleFeePaid(a)
         ? `<span class="chip st-paid">Оплачен · ${esc(fmtRub(a.feeAmount))}</span>`
-        : (a.feeStatus === "awaiting_payment"
+        : (battleFeePending(a)
           ? `<span class="chip st-awaiting_payment">Начал оплату</span>`
           : `<span class="chip chip-muted">Не оплачен · ожидается ~${esc(fmtRub(feeExpected(a)))}</span>`);
       card.innerHTML = `
@@ -1284,11 +1284,11 @@ ${PAY_LINK}
         "Telegram": a.telegram || "",
         "Instagram": a.instagram || "",
         "Город": a.city || "",
-        "Категории (взнос)": (a.feeStatus === "paid" ? (a.feeCategories || []) : payableCategories(a)).map(catLabel).join(", "),
+        "Категории (взнос)": (battleFeePaid(a) ? (a.feeCategories || []).filter((c) => c === "battle") : payableCategories(a)).map(catLabel).join(", "),
         "Участников": a.feeParticipants || "",
-        "Статус взноса": a.feeStatus === "paid" ? "Оплачен" : (a.feeStatus === "awaiting_payment" ? "Начал оплату" : "Не оплачен"),
-        "Сумма, ₽": a.feeStatus === "paid" ? (Number(a.feeAmount) || 0) : "",
-        "Ожидается, ₽": a.feeStatus !== "paid" ? feeExpected(a) : "",
+        "Статус взноса": battleFeePaid(a) ? "Оплачен" : (battleFeePending(a) ? "Начал оплату" : "Не оплачен"),
+        "Сумма, ₽": battleFeePaid(a) ? (Number(a.feeAmount) || 0) : "",
+        "Ожидается, ₽": !battleFeePaid(a) ? feeExpected(a) : "",
         "Промокод": a.feePromo || "",
         "ID платежа": a.feePaymentId || "",
       }));
@@ -1381,6 +1381,9 @@ ${PAY_LINK}
         return {
           "Дата": fmtDate(a.createdAt),
           "ФИО": a.fullName || "",
+          "Имя": a.firstName || "",
+          "Фамилия": a.lastName || "",
+          "Для объявления и диплома": a.stageName || a.fullName || "",
           "Email": a.email || "",
           "Телефон": a.phone || "",
           "Telegram": a.telegram || "",
@@ -2336,6 +2339,10 @@ ${PAY_LINK}
 
       <div class="d-section-title">Участник</div>
       <dl class="d-grid">
+        ${row("Имя", esc(a.firstName || "—"))}
+        ${row("Фамилия", esc(a.lastName || "—"))}
+        ${row("Для объявления и диплома", esc(a.stageName || a.fullName || "—"))}
+        ${row("Использовать имя и фамилию", a.useLegalName === false ? "Нет, указан псевдоним" : "Да")}
         ${row("Роль", esc(roleLabels[a.role] || a.role || "—"))}
         ${row("Стаж", esc(a.experience || "—"))}
         ${a.awards ? row("Призовые места", esc(a.awards)) : ""}
@@ -2362,7 +2369,7 @@ ${PAY_LINK}
       <div class="d-section-title">Взнос за участие</div>
       <dl class="d-grid">
         ${feeCategoryRowsHtml(a)}
-        ${a.feeStatus === "paid" ? row("Итого оплачено", esc(fmtRub(a.feeAmount))) : (payableCategories(a).length ? row("Итого сейчас", esc(fmtRub(feeExpected(a))) + (payableCategories(a).some((c) => feeKind(a, c) === "team") ? " × чел." : "") + " без промо") : "")}
+        ${battleFeePaid(a) ? row("Батл оплачен", esc(fmtRub(FEE_PRICES.battle))) : (payableCategories(a).length ? row("Итого сейчас", esc(fmtRub(feeExpected(a))) + " без промо") : "")}
         ${a.feeParticipants ? row("Участников", esc(String(a.feeParticipants))) : ""}
         ${a.feePromo ? row("Промокод", `<span class="chip chip-promo">🎟 ${esc(a.feePromo)}</span>`) : ""}
         ${a.feePaidAt ? row("Дата оплаты", esc(fmtDate(a.feePaidAt))) : ""}
@@ -2370,9 +2377,9 @@ ${PAY_LINK}
         ${feeHistory.length ? row("История", feeHistory.map((h) => `${esc(fmtDate(h.at))} — ${esc(h.comment || "")}`).join("<br>")) : ""}
       </dl>
       <div class="os-note-actions">
-        ${a.feeStatus !== "paid" && payableCategories(a).length ? `<button type="button" class="btn btn-ghost" id="fee-mark-paid">Отметить взнос оплаченным</button>` : ""}
+        ${!battleFeePaid(a) && payableCategories(a).length ? `<button type="button" class="btn btn-ghost" id="fee-mark-paid">Отметить взнос за батл оплаченным</button>` : ""}
         ${a.feePaymentId ? `<button type="button" class="btn btn-ghost" id="fee-verify">Проверить взнос в ЮKassa</button>` : ""}
-        ${a.feeStatus === "paid" ? `<button type="button" class="btn btn-ghost" id="fee-reset">Снять отметку взноса</button>` : ""}
+        ${battleFeePaid(a) ? `<button type="button" class="btn btn-ghost" id="fee-reset">Снять отметку взноса</button>` : ""}
       </div>` : ""}
 
       ${formsSectionHtml(a)}
